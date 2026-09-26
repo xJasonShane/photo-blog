@@ -1,0 +1,24 @@
+diff --git a/dist/compiled/@vercel/og/index.node.js b/dist/compiled/@vercel/og/index.node.js
+index 416de7e6420f1784f6cad3186d5b159f5097c382..227e493728edba8a81a379c011702d89f93d9104 100644
+--- a/dist/compiled/@vercel/og/index.node.js
++++ b/dist/compiled/@vercel/og/index.node.js
+@@ -21435,9 +21435,16 @@ async function render(satori2, resvg, sharp, opts, defaultFonts, element) {
+ 
+ // src/index.node.ts
+ var satori = lI.default || lI;
+-var fontData = fs2.readFileSync(
+-  fileURLToPath(new URL("./Geist-Regular.ttf", import.meta.url))
+-);
++var fontData;
++try {
++  fontData = fs2.readFileSync(
++    fileURLToPath(new URL("./Geist-Regular.ttf", import.meta.url))
++  );
++} catch {
++  fontData = fs2.readFileSync(
++    fileURLToPath(new URL("./Geist-Regular.ttf.bin", import.meta.url))
++  );
++}
+ var resvg_wasm = fs2.readFileSync(
+   fileURLToPath(new URL("./resvg.wasm", import.meta.url))
+ );

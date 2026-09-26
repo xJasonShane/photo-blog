@@ -1,0 +1,12 @@
+# 供 `pnpm preview:cf`（wrangler dev 本地预览 OpenNext Worker）使用。
+# 复制为 .dev.vars 并填写真实值。注意：本地预览模式下元数据仍走
+# S3 兼容 API（需要真实 R2 凭据），图片公开域名同理。
+AUTH_SECRET=change-me-to-a-long-random-string
+ADMIN_EMAIL=admin@example.com
+ADMIN_PASSWORD=change-me
+NEXT_PUBLIC_DOMAIN=http://localhost:8787
+NEXT_PUBLIC_CLOUDFLARE_R2_BUCKET=my-photo-bucket
+NEXT_PUBLIC_CLOUDFLARE_R2_ACCOUNT_ID=your-cloudflare-account-id
+NEXT_PUBLIC_CLOUDFLARE_R2_PUBLIC_DOMAIN=pub-xxxx.r2.dev
+CLOUDFLARE_R2_ACCESS_KEY=your-r2-access-key-id
+CLOUDFLARE_R2_SECRET_ACCESS_KEY=your-r2-secret-access-key

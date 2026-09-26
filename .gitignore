@@ -1,0 +1,48 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# next.js
+.next/
+out/
+next-env.d.ts
+
+# production build
+.open-next/
+.wrangler/
+dist/
+.vercel/
+
+# local development data (local storage driver + JSON store)
+.data/
+
+# eslint
+.eslintcache
+
+# misc
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.pem
+*.log
+
+# env files
+.env
+.env.*
+!.env.example
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+
+# typescript
+*.tsbuildinfo
+
+# reference clone (do not commit)
+_reference/
+dev-server.log
+
+# other
+AGENTS.md
+.trae/
+.zcode/
+.opencode/

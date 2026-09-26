@@ -1,0 +1,15 @@
+export const KEY_COMMANDS = {
+  home: 'H',
+  full: 'F',
+  grid: 'G',
+  library: 'L',
+  prev: ['ARROWLEFT'],
+  next: ['ARROWRIGHT'],
+  edit: 'E',
+  favorite: 'P',
+  unfavorite: 'X',
+  download: 'D',
+  sync: 'S',
+  search: ['⌘', 'K'],
+  delete: ['⌘', 'BACKSPACE'],
+} as const;

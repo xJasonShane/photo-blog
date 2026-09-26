@@ -1,0 +1,15 @@
+allowBuilds:
+  esbuild: true
+  unrs-resolver: true
+  workerd: true
+  '@tailwindcss/oxide': true
+  sharp: true
+# `sharp` is a peer/dependency of `next` and `wrangler` (via miniflare) but is
+# never used by this app (image processing happens in the browser with canvas,
+# on the server with jpeg-js/piexifjs). Removing it keeps native `.node`
+# binaries out of the Cloudflare/EdgeOne server bundles.
+overrides:
+  sharp: '-'
+patchedDependencies:
+  '@opennextjs/aws@4.1.4': patches/@opennextjs__aws@4.1.4.patch
+  next@16.3.5: patches/next@16.3.5.patch

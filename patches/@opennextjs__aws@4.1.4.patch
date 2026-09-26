@@ -1,0 +1,36 @@
+diff --git a/dist/build/copyTracedFiles.js b/dist/build/copyTracedFiles.js
+index c847154da1464b71bbd871ba668336ae0078cfed..075cc31d2031e2932b8c7fa3529764946fea9a3c 100644
+--- a/dist/build/copyTracedFiles.js
++++ b/dist/build/copyTracedFiles.js
+@@ -33,10 +33,11 @@ const EXCLUDED_PACKAGES = [
+     "next/dist/compiled/amphtml-validator",
+ ];
+ export function isExcluded(srcPath) {
++    const normalizedSrcPath = srcPath.replace(/[\\]/g, "/");
+     return EXCLUDED_PACKAGES.some((excluded) => 
+     // `pnpm` can create a symbolic link that points to the pnpm store folder
+     // This will live under `/node_modules/sharp`. We need to handle this in our regex
+-    srcPath.match(getCrossPlatformPathRegex(`/node_modules/${excluded}(?:/|$)`, {
++    normalizedSrcPath.match(getCrossPlatformPathRegex(`/node_modules/${excluded}(?:/|$)`, {
+         escape: false,
+     })));
+ }
+@@ -234,7 +235,17 @@ File ${serverPath} does not exist
+         }
+         if (symlink) {
+             try {
+-                symlinkSync(symlink, to);
++                try {
++                  symlinkSync(symlink, to);
++                } catch (error) {
++                  // Windows without Developer Mode/admin cannot create
++                  // symlinks — fall back to a directory junction
++                  if (error?.code === 'EPERM' && statSync(symlink).isDirectory()) {
++                    symlinkSync(symlink, to, 'junction');
++                  } else {
++                    throw error;
++                  }
++                }
+             }
+             catch (e) {
+                 if (e.code !== "EEXIST") {
