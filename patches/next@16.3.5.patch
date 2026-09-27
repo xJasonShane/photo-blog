@@ -22,3 +22,81 @@ index 416de7e6420f1784f6cad3186d5b159f5097c382..227e493728edba8a81a379c011702d89
  var resvg_wasm = fs2.readFileSync(
    fileURLToPath(new URL("./resvg.wasm", import.meta.url))
  );
+diff --git a/dist/esm/server/next-server.js b/dist/esm/server/next-server.js
+index 85a2d7c7b7ccf7d3ad5a36e9cd72440995d60769..88e721d2ce10f24b17e46093af0e63412d21b73b 100644
+--- a/dist/esm/server/next-server.js
++++ b/dist/esm/server/next-server.js
+@@ -926,12 +926,11 @@ export default class NextNodeServer extends BaseServer {
+         return super.render404(this.normalizeReq(req), this.normalizeRes(res), parsedUrl, setHeaders);
+     }
+     getMiddlewareManifest() {
+-        if (this.minimalMode) {
+-            return null;
+-        } else {
+-            const manifest = require(this.middlewareManifestPath);
+-            return manifest;
+-        }
++        // Patched for OpenNext on edge runtimes (Cloudflare Workers /
++        // EdgeOne Pages): loading the middleware manifest via a dynamic
++        // require is not supported there, and Node.js middleware is not
++        // used by this app.
++        return null;
+     }
+     /** Returns the middleware routing item if there is one. */ async getMiddleware() {
+         var _manifest_middleware;
+@@ -1004,22 +1003,9 @@ export default class NextNodeServer extends BaseServer {
+         };
+     }
+     async loadNodeMiddleware() {
+-        if (!process.env.NEXT_MINIMAL) {
+-            try {
+-                var _functionsConfig_functions;
+-                const functionsConfig = this.dev ? {} : require(join(/* turbopackIgnore: true */ this.distDir, 'server', FUNCTIONS_CONFIG_MANIFEST));
+-                if (this.dev || (functionsConfig == null ? void 0 : (_functionsConfig_functions = functionsConfig.functions) == null ? void 0 : _functionsConfig_functions['/_middleware'])) {
+-                    // if used with top level await, this will be a promise
+-                    return require(join(/* turbopackIgnore: true */ this.distDir, 'server', 'middleware.js'));
+-                }
+-            } catch (err) {
+-                if (isError(err) && err.code !== 'ENOENT' && err.code !== 'MODULE_NOT_FOUND') {
+-                    throw err;
+-                }
+-            }
+-        }
+-    }
+-    /**
++        // Patched for OpenNext on edge runtimes — no Node.js middleware
++        return undefined;
++    }    /**
+    * Checks if a middleware exists. This method is useful for the development
+    * server where we need to check the filesystem. Here we just check the
+    * middleware manifest.
+diff --git a/dist/server/next-server.js b/dist/server/next-server.js
+index f7e7ff0c8b2929d29561f474ad196487a2b5377e..6a98bbc1f7ea1895b40f9be696d7b90586e72ef1 100644
+--- a/dist/server/next-server.js
++++ b/dist/server/next-server.js
+@@ -995,12 +995,10 @@ class NextNodeServer extends _baseserver.default {
+         return super.render404(this.normalizeReq(req), this.normalizeRes(res), parsedUrl, setHeaders);
+     }
+     getMiddlewareManifest() {
+-        if (this.minimalMode) {
+-            return null;
+-        } else {
+-            const manifest = require(this.middlewareManifestPath);
+-            return manifest;
+-        }
++        // Patched for OpenNext on edge runtimes (Cloudflare Workers /
++        // EdgeOne Pages): the dynamic require of the middleware manifest
++        // crashes there, and Node.js middleware is not used by this app.
++        return null;
+     }
+     /** Returns the middleware routing item if there is one. */ async getMiddleware() {
+         var _manifest_middleware;
+@@ -1076,7 +1074,7 @@ class NextNodeServer extends _baseserver.default {
+         if (!process.env.NEXT_MINIMAL) {
+             try {
+                 var _functionsConfig_functions;
+-                const functionsConfig = this.dev ? {} : require((0, _path.join)(/* turbopackIgnore: true */ this.distDir, 'server', _constants.FUNCTIONS_CONFIG_MANIFEST));
++                const functionsConfig = this.dev ? {} : { functions: {} }; // Patched for OpenNext on edge runtimes — avoid dynamic require
+                 if (this.dev || (functionsConfig == null ? void 0 : (_functionsConfig_functions = functionsConfig.functions) == null ? void 0 : _functionsConfig_functions['/_middleware'])) {
+                     // if used with top level await, this will be a promise
+                     return require((0, _path.join)(/* turbopackIgnore: true */ this.distDir, 'server', 'middleware.js'));

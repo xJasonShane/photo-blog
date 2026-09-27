@@ -167,7 +167,7 @@ overrides:
 
 patchedDependencies:
   '@opennextjs/aws@4.1.4': a0a694d42c17717f402d91a557d55b55b6915386578ef73110e4026807832a02
-  next@16.3.5: f20357086652350bd1fbb6f88248c3bfd3ef27e5ec82bc3a0c5d3ce78419538f
+  next@16.3.5: 69b81f64b178a387b5743f5b58fb20d28ca6665c7028da0d840821e1800134e6
 
 importers:
 
@@ -247,7 +247,7 @@ importers:
         version: 6.0.1
       next:
         specifier: 16.3.5
-        version: 16.3.5(patch_hash=f20357086652350bd1fbb6f88248c3bfd3ef27e5ec82bc3a0c5d3ce78419538f)(@babel/core@7.29.7(supports-color@10.2.2))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+        version: 16.3.5(patch_hash=69b81f64b178a387b5743f5b58fb20d28ca6665c7028da0d840821e1800134e6)(@babel/core@7.29.7(supports-color@10.2.2))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       next-themes:
         specifier: ^0.4.6
         version: 0.4.6(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
@@ -296,7 +296,7 @@ importers:
         version: 16.3.5(eslint@9.39.5(jiti@2.7.0)(supports-color@10.2.2))
       '@opennextjs/cloudflare':
         specifier: ^1.20.6
-        version: 1.20.6(next@16.3.5(patch_hash=f20357086652350bd1fbb6f88248c3bfd3ef27e5ec82bc3a0c5d3ce78419538f)(@babel/core@7.29.7(supports-color@10.2.2))(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(supports-color@10.2.2)(wrangler@4.140.0)
+        version: 1.20.6(next@16.3.5(patch_hash=69b81f64b178a387b5743f5b58fb20d28ca6665c7028da0d840821e1800134e6)(@babel/core@7.29.7(supports-color@10.2.2))(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(supports-color@10.2.2)(wrangler@4.140.0)
       '@stylistic/eslint-plugin':
         specifier: ^5.10.0
         version: 5.10.0(eslint@9.39.5(jiti@2.7.0)(supports-color@10.2.2))
@@ -5447,7 +5447,7 @@ snapshots:
 
   '@nolyfill/is-core-module@1.0.39': {}
 
-  '@opennextjs/aws@4.1.4(patch_hash=a0a694d42c17717f402d91a557d55b55b6915386578ef73110e4026807832a02)(next@16.3.5(patch_hash=f20357086652350bd1fbb6f88248c3bfd3ef27e5ec82bc3a0c5d3ce78419538f)(@babel/core@7.29.7(supports-color@10.2.2))(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(supports-color@10.2.2)':
+  '@opennextjs/aws@4.1.4(patch_hash=a0a694d42c17717f402d91a557d55b55b6915386578ef73110e4026807832a02)(next@16.3.5(patch_hash=69b81f64b178a387b5743f5b58fb20d28ca6665c7028da0d840821e1800134e6)(@babel/core@7.29.7(supports-color@10.2.2))(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(supports-color@10.2.2)':
     dependencies:
       '@ast-grep/napi': 0.40.5
       '@aws-sdk/client-cloudfront': 3.984.0
@@ -5463,24 +5463,24 @@ snapshots:
       cookie: 1.1.1
       esbuild: 0.25.4
       express: 5.2.1(supports-color@10.2.2)
-      next: 16.3.5(patch_hash=f20357086652350bd1fbb6f88248c3bfd3ef27e5ec82bc3a0c5d3ce78419538f)(@babel/core@7.29.7(supports-color@10.2.2))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      next: 16.3.5(patch_hash=69b81f64b178a387b5743f5b58fb20d28ca6665c7028da0d840821e1800134e6)(@babel/core@7.29.7(supports-color@10.2.2))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       path-to-regexp: 6.3.0
       urlpattern-polyfill: 10.1.0
       yaml: 2.9.1
     transitivePeerDependencies:
       - supports-color
 
-  '@opennextjs/cloudflare@1.20.6(next@16.3.5(patch_hash=f20357086652350bd1fbb6f88248c3bfd3ef27e5ec82bc3a0c5d3ce78419538f)(@babel/core@7.29.7(supports-color@10.2.2))(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(supports-color@10.2.2)(wrangler@4.140.0)':
+  '@opennextjs/cloudflare@1.20.6(next@16.3.5(patch_hash=69b81f64b178a387b5743f5b58fb20d28ca6665c7028da0d840821e1800134e6)(@babel/core@7.29.7(supports-color@10.2.2))(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(supports-color@10.2.2)(wrangler@4.140.0)':
     dependencies:
       '@ast-grep/napi': 0.40.5
       '@dotenvx/dotenvx': 1.31.0
-      '@opennextjs/aws': 4.1.4(patch_hash=a0a694d42c17717f402d91a557d55b55b6915386578ef73110e4026807832a02)(next@16.3.5(patch_hash=f20357086652350bd1fbb6f88248c3bfd3ef27e5ec82bc3a0c5d3ce78419538f)(@babel/core@7.29.7(supports-color@10.2.2))(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(supports-color@10.2.2)
+      '@opennextjs/aws': 4.1.4(patch_hash=a0a694d42c17717f402d91a557d55b55b6915386578ef73110e4026807832a02)(next@16.3.5(patch_hash=69b81f64b178a387b5743f5b58fb20d28ca6665c7028da0d840821e1800134e6)(@babel/core@7.29.7(supports-color@10.2.2))(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(supports-color@10.2.2)
       ci-info: 4.4.0
       cloudflare: 4.5.0
       comment-json: 4.6.2
       enquirer: 2.4.1
       glob: 12.0.0
-      next: 16.3.5(patch_hash=f20357086652350bd1fbb6f88248c3bfd3ef27e5ec82bc3a0c5d3ce78419538f)(@babel/core@7.29.7(supports-color@10.2.2))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      next: 16.3.5(patch_hash=69b81f64b178a387b5743f5b58fb20d28ca6665c7028da0d840821e1800134e6)(@babel/core@7.29.7(supports-color@10.2.2))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       ts-tqdm: 0.8.6
       wrangler: 4.140.0
       yargs: 18.2.0
@@ -7858,7 +7858,7 @@ snapshots:
       react: 19.3.0
       react-dom: 19.3.0(react@19.3.0)
 
-  next@16.3.5(patch_hash=f20357086652350bd1fbb6f88248c3bfd3ef27e5ec82bc3a0c5d3ce78419538f)(@babel/core@7.29.7(supports-color@10.2.2))(react-dom@19.3.0(react@19.3.0))(react@19.3.0):
+  next@16.3.5(patch_hash=69b81f64b178a387b5743f5b58fb20d28ca6665c7028da0d840821e1800134e6)(@babel/core@7.29.7(supports-color@10.2.2))(react-dom@19.3.0(react@19.3.0))(react@19.3.0):
     dependencies:
       '@next/env': 16.3.5
       '@swc/helpers': 0.5.23

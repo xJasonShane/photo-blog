@@ -7,6 +7,7 @@ import {
   getPhotosMetaCached,
 } from '@/photo/cache';
 import { TAG_FAVS } from '@/tag';
+import { redirectIfUnauthenticated } from '@/auth/guard';
 
 const PHOTO_CHOOSER_QUERY_OPTIONS = feedQueryOptions({
   isGrid: true,
@@ -14,6 +15,8 @@ const PHOTO_CHOOSER_QUERY_OPTIONS = feedQueryOptions({
 });
 
 export default async function LibraryEditPage() {
+  await redirectIfUnauthenticated('/library/edit');
+
   const [
     {
       library,
