@@ -50,14 +50,7 @@ import {
   KEY_YEARS,
   KEY_COUNT,
   KEY_DATE_RANGE,
-  revalidateYearsKey,
-  revalidateCamerasKey,
-  revalidateLensesKey,
-  revalidateAlbumsKey,
-  revalidateTagsKey,
-  revalidateFilmsKey,
-  revalidateRecipesKey,
-  revalidateFocalLengthsKey,
+  revalidatePhotosKey,
 } from '@/cache';
 
 const getCacheKeyForPhotoQueryOptions = (
@@ -105,19 +98,20 @@ const getPhotosCacheKeys = (options: PhotoQueryOptions = {}) => {
   return tags;
 };
 
-export const revalidatePhoto = (photoId: string) => {
-  // Tags
+// The photo id doubles as a cache tag (attached in `getPhotoCached`) so
+// that a single photo's detail cache can be invalidated precisely.
+export const revalidatePhotoDetail = (photoId: string) => {
   revalidateTag(photoId, 'max');
-  revalidateYearsKey();
-  revalidateCamerasKey();
-  revalidateLensesKey();
-  revalidateAlbumsKey();
-  revalidateTagsKey();
-  revalidateFilmsKey();
-  revalidateRecipesKey();
-  revalidateFocalLengthsKey();
-  // Paths
   revalidatePath(pathForPhoto({ photo: photoId }), 'layout');
+};
+
+export const revalidatePhoto = (photoId: string) => {
+  // Tags: the `photos` key covers lists and every photos-derived
+  // aggregate (categories/counts all carry it), while the photo id tag
+  // precisely invalidates this photo's detail cache.
+  revalidatePhotosKey();
+  revalidatePhotoDetail(photoId);
+  // Paths (page payloads)
   revalidatePath(PATH_ROOT, 'layout');
   revalidatePath(PATH_GRID, 'layout');
   revalidatePath(PATH_FULL, 'layout');
@@ -177,7 +171,8 @@ export const getPhotosMostRecentUpdateCached =
 export const getPhotoCached = (...args: Parameters<typeof getPhoto>) =>
   unstable_cache(
     getPhoto,
-    [KEY_PHOTOS, KEY_PHOTO],
+    // The photo id acts as a per-photo cache tag (see `revalidatePhoto`)
+    [KEY_PHOTO, args[0]],
   )(...args).then(photo => photo ? parseCachedPhotoDates(photo) : undefined);
 
 export const getPhotosInNeedOfUpdateCountCached =

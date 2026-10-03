@@ -41,7 +41,11 @@ import {
   revalidateRecipesKey,
   revalidateTagsKey,
 } from '@/cache';
-import { revalidatePhoto, getPhotosCached } from './cache';
+import {
+  revalidatePhoto,
+  revalidatePhotoDetail,
+  getPhotosCached,
+} from './cache';
 import {
   PATH_ADMIN_RECIPES,
   PATH_ADMIN_TAGS,
@@ -424,7 +428,10 @@ export const toggleFavoritePhotoAction = async (
         ? tags.filter(tag => !isTagFavs(tag))
         : [...tags, TAG_FAVS];
       await updatePhoto(convertPhotoToPhotoDbInsert(photo));
-      revalidateAllKeysAndPaths();
+      // Targeted invalidation: a favorite toggle only affects this
+      // photo's detail, the photo lists and the favs tag aggregate
+      // (all covered by `revalidatePhoto`).
+      revalidatePhoto(photo.id);
       if (shouldRedirect) {
         redirect(pathForPhoto({ photo: photoId }));
       }
@@ -442,7 +449,10 @@ export const setPhotoVisibilityAction = async (
       photo.hidden = visibility === 'private';
       photo.excludeFromFeeds = visibility === 'exclude';
       await updatePhoto(convertPhotoToPhotoDbInsert(photo));
-      revalidateAllKeysAndPaths();
+      // Targeted invalidation: visibility only affects this photo's
+      // detail, the (hidden-filtered) lists and aggregates — all
+      // covered by `revalidatePhoto`.
+      revalidatePhoto(photo.id);
     }
     if (redirectPath) { redirect(redirectPath); }
   });
@@ -936,7 +946,11 @@ export const batchUpdatePhotoTitlesAction = async (
     validUpdates.map(({ title }) => title.trim() || null),
     validUpdates.map(({ caption }) => caption.trim() || null),
   );
-  revalidateAllKeysAndPaths();
+  // Targeted invalidation: title edits only affect the photo lists and
+  // each edited photo's detail cache — not the other aggregate keys.
+  revalidatePhotosKey();
+  validUpdates.forEach(({ photoId }) => revalidatePhotoDetail(photoId));
+  revalidateAdminPaths();
 });
 
 export const getPhotoAction = async (photoId: string) =>

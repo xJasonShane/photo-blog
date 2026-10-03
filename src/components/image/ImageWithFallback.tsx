@@ -79,7 +79,7 @@ export default function ImageWithFallback({
         loading={loading ?? (priority ? 'eager' : 'lazy')}
         {...priority && { fetchPriority: 'high' as const }}
         decoding="async"
-        className={classNameImage}
+        className={clsx('cv-auto', classNameImage)}
         onLoad={onLoad}
         onError={onError}
       />

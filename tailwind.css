@@ -5,6 +5,13 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* Skip offscreen rendering/decoding for grid images; the width/height
+   attributes keep the layout box stable while contents are skipped. */
+@utility cv-auto {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 500px;
+}
+
 @custom-variant hover {
   @media (pointer: fine) {
     &:hover {
