@@ -25,6 +25,17 @@ export const clearAuthEmailCookie = () =>
 export const isCredentialsSignInError = (error?: any) =>
   (error?.message || `${error}`).includes(KEY_CREDENTIALS_SIGN_IN_ERROR);
 
+/**
+ * Only same-origin relative paths may be used as post-sign-in redirect
+ * targets: rejects absolute URLs and protocol-relative forms such as
+ * `//evil.com` or `/\evil.com` (browsers normalize backslashes to
+ * slashes in the authority position).
+ */
+export const isSafeInternalRedirectPath = (path: string) =>
+  path.startsWith('/') &&
+  !path.startsWith('//') &&
+  !path.startsWith('/\\');
+
 export const generateAuthSecret = () => fetch(
   'https://generate-secret.vercel.app/32',
   { cache: 'no-cache' },

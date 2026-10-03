@@ -27,6 +27,12 @@ const KEY_ALBUMS = '_data/albums.json';
 const KEY_LIBRARY = '_data/library.json';
 
 interface TextStoreDriver {
+  /**
+   * Resolves `null` only when the document does not exist. Transient
+   * read failures (network errors, 5xx) must throw — callers rely on a
+   * failed read surfacing as an error rather than masquerading as empty
+   * data, which would let the next full-document write wipe it.
+   */
   getText(key: string): Promise<string | null>
   putText(key: string, value: string): Promise<void>
   deleteText?(key: string): Promise<void>
@@ -56,9 +62,11 @@ const getAwsClient = () => {
 const s3Driver: TextStoreDriver = {
   async getText(key) {
     const response = await getAwsClient()
-      .fetch(`${R2_BASE_URL}/${key}`, { method: 'GET' })
-      .catch(() => undefined);
-    if (!response || !response.ok) { return null; }
+      .fetch(`${R2_BASE_URL}/${key}`, { method: 'GET' });
+    if (response.status === 404) { return null; }
+    if (!response.ok) {
+      throw new Error(`R2 store read failed for "${key}" (${response.status})`);
+    }
     return response.text();
   },
   async putText(key, value) {
@@ -87,13 +95,18 @@ const localDriverModule = () =>
   import(/* webpackIgnore: true */ /* turbopackIgnore: true */ 'node:fs/promises')
     .then(fs => fs as unknown as typeof import('node:fs/promises'));
 
+const isNodeFileNotFoundError = (e: unknown) =>
+  typeof e === 'object' && e !== null && 'code' in e &&
+  ['ENOENT', 'ENOTDIR'].includes((e as { code?: string }).code ?? '');
+
 const localDriver: TextStoreDriver = {
   async getText(key) {
+    const fs = await localDriverModule();
     try {
-      const fs = await localDriverModule();
       return await fs.readFile(`${LOCAL_STORE_DIR}/${key}`, 'utf8');
-    } catch {
-      return null;
+    } catch (e) {
+      if (isNodeFileNotFoundError(e)) { return null; }
+      throw e;
     }
   },
   async putText(key, value) {
@@ -112,13 +125,18 @@ const getDriver = (): TextStoreDriver =>
 // Read/write helpers
 // ---------------------------------------------------------------------------
 
-const readJson = async <T>(key: string): Promise<T | undefined> =>
-  getDriver().getText(key)
-    .then(text => text ? JSON.parse(text) as T : undefined)
-    .catch(e => {
-      console.error(`Error reading "${key}" from store:`, e);
-      return undefined;
-    });
+const readJson = async <T>(key: string): Promise<T | undefined> => {
+  const text = await getDriver().getText(key);
+  if (text === null) { return undefined; }
+  try {
+    return JSON.parse(text) as T;
+  } catch (e) {
+    // Fail closed on corrupted documents — treating them as missing
+    // would let the next full-document write replace all metadata.
+    console.error(`Corrupted JSON in store document "${key}":`, e);
+    throw e;
+  }
+};
 
 const writeJson = async <T>(key: string, value: T) => {
   await getDriver().putText(key, JSON.stringify(value));
@@ -171,6 +189,10 @@ const hydratePhotoDates = (photo: Record<string, unknown>) => {
 
 export const getStoredPhotos = async (): Promise<StoredPhoto[]> => {
   const data = await readJson<{ photos: StoredPhoto[] }>(KEY_PHOTOS);
+  if (data && !Array.isArray(data.photos)) {
+    throw new Error(
+      `Stored photos document "${KEY_PHOTOS}" has an unexpected shape`);
+  }
   return (data?.photos ?? [])
     .map(photo => hydratePhotoDates(photo) as StoredPhoto);
 };
@@ -208,6 +230,11 @@ const hydrateAlbumDates = (album: Record<string, unknown>) => {
 
 export const getStoredAlbumData = async (): Promise<StoredAlbumData> => {
   const data = await readJson<StoredAlbumData>(KEY_ALBUMS);
+  if (data &&
+    (!Array.isArray(data.albums) || !Array.isArray(data.albumPhoto))) {
+    throw new Error(
+      `Stored albums document "${KEY_ALBUMS}" has an unexpected shape`);
+  }
   return {
     albums: (data?.albums ?? []).map(
       album => hydrateAlbumDates(album) as StoredAlbum,

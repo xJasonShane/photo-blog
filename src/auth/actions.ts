@@ -2,6 +2,7 @@
 
 import {
   auth,
+  runAuthenticatedAdminServerAction,
   signIn,
   signOut,
 } from '@/auth/server';
@@ -9,6 +10,7 @@ import type { Session } from '@/auth/server';
 import { redirect } from 'next/navigation';
 import {
   generateAuthSecret,
+  isSafeInternalRedirectPath,
   KEY_CALLBACK_URL,
   KEY_CREDENTIALS_SIGN_IN_ERROR,
   KEY_CREDENTIALS_SUCCESS,
@@ -34,8 +36,10 @@ export const signInAction = async (
       throw error;
     }
   }
-  if (formData.get(KEY_CALLBACK_URL)) {
-    redirect(formData.get(KEY_CALLBACK_URL) as string);
+  const callbackUrl = formData.get(KEY_CALLBACK_URL);
+  if (typeof callbackUrl === 'string' &&
+    isSafeInternalRedirectPath(callbackUrl)) {
+    redirect(callbackUrl);
   }
   return KEY_CREDENTIALS_SUCCESS;
 };
@@ -48,4 +52,5 @@ export const getAuthAction = async (): Promise<Session | null> => auth();
 export const logClientAuthUpdate = async (data: Session | null | undefined) =>
   console.log('Client auth update', data);
 
-export const generateAuthSecretAction = async () => generateAuthSecret();
+export const generateAuthSecretAction = async () =>
+  runAuthenticatedAdminServerAction(() => generateAuthSecret());

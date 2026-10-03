@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { auth } from '@/auth/server';
 
 /**
  * Development-only file server for the local storage driver
  * (`.data/files/`). Never invoked when R2 storage is configured; the
  * `node:fs` import is resolved at runtime so bundler builds stay clean.
+ *
+ * GET is public: it takes the role of the R2 public domain and serves
+ * photo content to visitors. PUT/DELETE are admin-only (the browser
+ * upload flow hits them same-origin, so the session cookie is included).
  */
 const LOCAL_FILES_DIR = '.data/files';
 
@@ -14,9 +19,22 @@ const fsModule = () =>
 
 const safeFileNameFromKey = (key: string[]): string | undefined => {
   const fileName = key.join('/');
-  if (!fileName || fileName.includes('..')) { return undefined; }
+  // Files live in a flat directory: reject any path structure outright.
+  if (!fileName || fileName.includes('..') ||
+    fileName.includes('/') || fileName.includes('\\')) {
+    return undefined;
+  }
   return fileName;
 };
+
+const requireAdminSession = async () => {
+  const session = await auth();
+  return Boolean(session?.user);
+};
+
+const isNodeFileNotFoundError = (e: unknown) =>
+  typeof e === 'object' && e !== null && 'code' in e &&
+  ['ENOENT', 'ENOTDIR'].includes((e as { code?: string }).code ?? '');
 
 const contentTypeForFileName = (fileName: string) => {
   const extension = fileName.split('.').pop()?.toLowerCase();
@@ -56,8 +74,11 @@ export async function GET(
       },
     });
   } catch (e) {
-    console.log('[local-file] read error:', e);
-    return new NextResponse(String(e), { status: 500 });
+    if (isNodeFileNotFoundError(e)) {
+      return new NextResponse('Not found', { status: 404 });
+    }
+    console.error('[local-file] read error:', e);
+    return new NextResponse('Read failed', { status: 500 });
   }
 }
 
@@ -65,6 +86,10 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ key: string[] }> },
 ) {
+  if (!await requireAdminSession()) {
+    return new NextResponse('Unauthorized request', { status: 401 });
+  }
+
   const { key } = await params;
   const fileName = safeFileNameFromKey(key);
   if (!fileName) {
@@ -81,7 +106,8 @@ export async function PUT(
     );
     return new NextResponse(null, { status: 200 });
   } catch (e) {
-    return new NextResponse(`${e}`, { status: 500 });
+    console.error('[local-file] write error:', e);
+    return new NextResponse('Write failed', { status: 500 });
   }
 }
 
@@ -89,6 +115,10 @@ export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ key: string[] }> },
 ) {
+  if (!await requireAdminSession()) {
+    return new NextResponse('Unauthorized request', { status: 401 });
+  }
+
   const { key } = await params;
   const fileName = safeFileNameFromKey(key);
   if (!fileName) {
