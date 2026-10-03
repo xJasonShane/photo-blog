@@ -9,8 +9,11 @@ export const revalidate = 86400;
 
 export async function GET() {
   if (SITE_FEEDS_ENABLED) {
-    const photos = await getPhotosCached(PROGRAMMATIC_QUERY_OPTIONS)
-      .catch(() => []);
+    // No catch fallback: a transient store outage must fail this
+    // generation instead of persisting an empty feed for the full
+    // revalidate window — a thrown error serves any previous ISR entry
+    // and retries on the next request.
+    const photos = await getPhotosCached(PROGRAMMATIC_QUERY_OPTIONS);
     return new Response(
       formatFeedRssXml(photos),
       { headers: { 'Content-Type': 'text/xml' } },

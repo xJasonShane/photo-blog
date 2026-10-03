@@ -69,6 +69,13 @@ export default function PhotoGridMasonry({
     { length: masonryColsCount },
     () => [] as ReactNode[],
   );
+  // Keys derive from photo ids, not per-column indexes: re-partitioning
+  // after an infinite-scroll page load shifts a tile's index within its
+  // column, and index keys would remount (flicker + re-decode) it.
+  const partitionedKeys = Array.from(
+    { length: masonryColsCount },
+    () => [] as string[],
+  );
   const colHeights = new Array(masonryColsCount).fill(0);
 
   photos.forEach((photo, index) => {
@@ -84,6 +91,7 @@ export default function PhotoGridMasonry({
       }
     }
     partitionedColumns[shortestColIndex].push(photoNodes[index]);
+    partitionedKeys[shortestColIndex].push(photo.id);
     colHeights[shortestColIndex] += 1 / (photo.aspectRatio || 1);
   });
 
@@ -122,7 +130,7 @@ export default function PhotoGridMasonry({
                 : undefined
             }
             items={colItems}
-            itemKeys={colItems.map((_, index) => `col-${i}-item-${index}`)}
+            itemKeys={partitionedKeys[i]}
           />
         ))}
       </div>

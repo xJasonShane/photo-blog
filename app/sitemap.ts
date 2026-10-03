@@ -17,10 +17,7 @@ import {
 import { isTagFavs } from '@/tag';
 import { BASE_URL, GRID_HOMEPAGE_ENABLED } from '@/app/config';
 import { getAllPhotoIdsWithUpdatedAt } from '@/photo/query';
-import {
-  getLastModifiedForCategories,
-  NULL_CATEGORY_DATA,
-} from '@/category/data';
+import { getLastModifiedForCategories } from '@/category/data';
 
 // Cache for 24 hours (ISR — requires the OpenNext incremental cache
 // configured in open-next.config.ts to persist across isolates)
@@ -33,12 +30,16 @@ const PRIORITY_CATEGORY         = 0.7;
 const PRIORITY_PHOTO            = 0.5;
  
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  // No catch fallbacks: a transient store outage must fail this
+  // generation instead of persisting an empty sitemap for the full
+  // revalidate window — a thrown error serves any previous ISR entry
+  // and retries on the next request.
   const [
     categories,
     photos,
   ] = await Promise.all([
-    getDataForCategoriesCached().catch(() => NULL_CATEGORY_DATA),
-    getAllPhotoIdsWithUpdatedAt().catch(() => []),
+    getDataForCategoriesCached(),
+    getAllPhotoIdsWithUpdatedAt(),
   ]);
 
   const {

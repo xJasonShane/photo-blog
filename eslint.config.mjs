@@ -17,6 +17,13 @@ export default defineConfig([
     'out/**',
     'build/**',
     'next-env.d.ts',
+    // OpenNext Cloudflare build output (this repo's primary build path);
+    // its .cjs artifacts also break plugin resolution for the
+    // rules-only jsxA11y config object above
+    '.open-next/**',
+    // Local wrangler dev/build output — multi-MB minified worker bundles
+    // that exhaust memory if linted
+    '.wrangler/**',
   ]), {
     plugins: {
       '@stylistic': stylistic,

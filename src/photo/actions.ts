@@ -572,6 +572,9 @@ export const recalculateColorDataForAllPhotosAction = async () =>
         );
       }
     }
+    // Color sort values changed across the whole library: without this,
+    // color-sorted pages and cached queries keep their previous order.
+    revalidateAllKeysAndPaths();
   });
 
 export const deletePhotoRecipeGloballyAction = async (formData: FormData) =>

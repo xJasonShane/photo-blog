@@ -1,5 +1,8 @@
+// Platform-neutral production check: the upstream template gated on
+// NEXT_PUBLIC_VERCEL_ENV, which never matches on Cloudflare Workers /
+// EdgeOne Pages and left every OG route uncached in production there.
 export const getImageResponseCacheControlHeaders = (
-  shouldCache = process.env.NEXT_PUBLIC_VERCEL_ENV === 'production',
+  shouldCache = process.env.NODE_ENV === 'production',
 ) => {
   return {
     'Cache-Control': shouldCache

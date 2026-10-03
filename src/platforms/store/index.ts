@@ -28,7 +28,7 @@ export const HAS_R2_DATA_STORE = Boolean(
   R2_BUCKET && R2_ACCOUNT_ID && R2_ACCESS_KEY && R2_SECRET_ACCESS_KEY,
 );
 
-const KEY_PHOTOS = '_data/photos.json';
+export const KEY_PHOTOS = '_data/photos.json';
 const KEY_ALBUMS = '_data/albums.json';
 const KEY_LIBRARY = '_data/library.json';
 

@@ -102,7 +102,8 @@ pnpm upload:cf    # 构建并上传(不立即发布)
 2. 创建 R2 API Token(对象读写权限),拿到 Access Key / Secret Key;
 3. 在 [wrangler.jsonc](./wrangler.jsonc) 中把 `NEXT_INC_CACHE_R2_BUCKET` 绑定的 `bucket_name` 改为你的桶名——OpenNext 的跨隔离实例缓存(ISR / 数据缓存 / `revalidateTag`)依赖该绑定,对应的 Durable Object(`DOShardedTagCache` / `DOQueueHandler`)会在首次部署时自动创建;
 4. 配置上表所列必填环境变量(部署环境或 `.dev.vars`);
-5. `pnpm deploy:cf` 完成部署。
+5. **(安全必需)屏蔽公开域名下的元数据与缓存路径**:照片元数据文档(`_data/*.json`)与 OpenNext 增量缓存和图片同存于该桶,若桶绑定了公开域名,任何人将可直接下载全部元数据(含私密照片)。必须通过 WAF / Transform Rule 在公开域名上拦截 `/_data/*` 等前缀,或将元数据与缓存移至独立私有桶。验证:`curl -I https://<公开域名>/_data/photos.json` 应返回 403 / 404;
+6. `pnpm deploy:cf` 完成部署。部署后可在 `/admin/insights` 查看元数据公开可读性的自动检测结果。
 
 > 本地预览(`preview:cf`)使用 [.dev.vars.example](./.dev.vars.example):复制为 `.dev.vars` 并填写真实值。预览模式下元数据同样走 S3 兼容 API,需要真实 R2 凭据。
 
