@@ -4,22 +4,31 @@
 import { BLUR_ENABLED } from '@/app/config';
 import { useAppState } from '@/app/AppState';
 import { clsx}  from 'clsx/lite';
-import Image, { ImageProps } from 'next/image';
+import type { ImageProps } from 'next/image';
 import { RefObject, useCallback, useEffect, useRef, useState } from 'react';
 
 export default function ImageWithFallback({
   ref: refProp,
+  src,
   className,
   classNameImage = 'object-cover h-full',
   blurDataURL,
   blurCompatibilityLevel = 'low',
   priority,
+  quality: _quality,
+  srcSet,
+  sizes,
+  loading,
   ...props
 }: ImageProps & {
   ref?: RefObject<HTMLImageElement | null>
   blurCompatibilityLevel?: 'none' | 'low' | 'high'
   classNameImage?: string
   priority?: boolean
+  // `srcSet` and `loading` are omitted from next/image's prop type but
+  // are supported natively on the underlying <img> element
+  srcSet?: string
+  loading?: 'eager' | 'lazy'
 }) {
   const ref = useRef<HTMLImageElement>(null);
 
@@ -59,13 +68,21 @@ export default function ImageWithFallback({
         className,
       )}
     >
-      <Image ref={refProp ?? ref} {...{
-        ...props,
-        priority,
-        className: classNameImage,
-        onLoad,
-        onError,
-      }} />
+      {/* Images are pre-optimized at upload time (`images.unoptimized`),
+        - so a native <img> is used directly — it also allows a manually
+        - supplied `srcSet`, which next/image strips from its props. */}
+      <img
+        ref={refProp ?? ref}
+        {...props}
+        src={src as string}
+        {...{ srcSet, sizes }}
+        loading={loading ?? (priority ? 'eager' : 'lazy')}
+        {...priority && { fetchPriority: 'high' as const }}
+        decoding="async"
+        className={classNameImage}
+        onLoad={onLoad}
+        onError={onError}
+      />
       <div
         className={clsx(
           '@container',

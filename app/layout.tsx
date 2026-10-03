@@ -35,13 +35,50 @@ import AdminBatchEditPanel from '@/admin/select/AdminBatchEditPanel';
 import EditTitlesProvider from '@/admin/edit-titles/EditTitlesProvider';
 import AdminEditTitlesPanel from '@/admin/edit-titles/AdminEditTitlesPanel';
 import Script from 'next/script';
+import localFont from 'next/font/local';
 
 import '../tailwind.css';
+
+// Self-hosted (no third-party font CDN): weights 400/500/700 cover all
+// site typography; the TTFs double as the source for `font-data.ts`,
+// which embeds the font used by OG image generation.
+const ibmPlexMono = localFont({
+  src: [
+    {
+      path: '../public/fonts/IBMPlexMono-Regular.ttf',
+      weight: '400',
+      style: 'normal',
+    },
+    {
+      path: '../public/fonts/IBMPlexMono-Medium.ttf',
+      weight: '500',
+      style: 'normal',
+    },
+    {
+      path: '../public/fonts/IBMPlexMono-Bold.ttf',
+      weight: '700',
+      style: 'normal',
+    },
+  ],
+  variable: '--font-ibm-plex-mono',
+  display: 'swap',
+});
 
 export const metadata: Metadata = {
   title: META_TITLE,
   description: META_DESCRIPTION,
   ...BASE_URL && { metadataBase: new URL(BASE_URL) },
+  // Self-canonicalize every page ('./' resolves per-route), which keeps
+  // query-parameter variants out of search indexes.
+  alternates: {
+    canonical: './',
+    ...SITE_FEEDS_ENABLED && {
+      types: {
+        'application/rss+xml': PATH_RSS_XML,
+        'application/json': PATH_FEED_JSON,
+      },
+    },
+  },
   openGraph: {
     title: META_TITLE,
     description: META_DESCRIPTION,
@@ -78,14 +115,6 @@ export const metadata: Metadata = {
       'build': VERCEL_GIT_COMMIT_SHA_SHORT ?? 'unknown',
     },
   },
-  ...SITE_FEEDS_ENABLED && {
-    alternates: {
-      types: {
-        'application/rss+xml': PATH_RSS_XML,
-        'application/json': PATH_FEED_JSON,
-      },
-    },
-  },
 };
 
 export default function RootLayout({
@@ -96,12 +125,10 @@ export default function RootLayout({
   return (
     <html
       lang={HTML_LANG}
+      className={ibmPlexMono.variable}
       // Suppress hydration errors due to next-themes behavior
       suppressHydrationWarning
     >
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-      </head>
       <body className={clsx(
         // Center on large screens
         '3xl:flex flex-col items-center',

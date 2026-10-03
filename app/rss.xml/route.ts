@@ -3,8 +3,9 @@ import { SITE_FEEDS_ENABLED } from '@/app/config';
 import { formatFeedRssXml } from '@/feed/rss';
 import { PROGRAMMATIC_QUERY_OPTIONS } from '@/feed';
 
-// Cache for 24 hours
-export const dynamic = 'force-dynamic';
+// Cache for 24 hours (ISR — requires the OpenNext incremental cache
+// configured in open-next.config.ts to persist across isolates)
+export const revalidate = 86400;
 
 export async function GET() {
   if (SITE_FEEDS_ENABLED) {

@@ -12,6 +12,10 @@ import {
 } from '.';
 import AppGrid from '@/components/AppGrid';
 import ImageLarge from '@/components/image/ImageLarge';
+import {
+  getSrcSetForImageUrl,
+  SIZES_FOR_PHOTO_HERO,
+} from '@/platforms/next-image';
 import { clsx } from 'clsx/lite';
 import Link from 'next/link';
 import { pathForFocalLength, pathForPhoto } from '@/app/path';
@@ -261,6 +265,11 @@ export default function PhotoLarge({
             'object-contain w-full h-full')}
           alt={altTextForPhoto(photo)}
           src={photo.url}
+          srcSet={getSrcSetForImageUrl({
+            imageUrl: photo.url,
+            originalWidth: photo.width,
+          })}
+          sizes={SIZES_FOR_PHOTO_HERO}
           aspectRatio={photo.aspectRatio}
           blurDataURL={photo.blurData}
           blurCompatibilityMode={doesPhotoNeedBlurCompatibility(photo)}

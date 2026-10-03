@@ -39,13 +39,15 @@ export const getDimensionsFromExif = (
     case OrientationTypes.TOP_RIGHT:
     case OrientationTypes.BOTTOM_RIGHT:
     case OrientationTypes.BOTTOM_LEFT:
-    case OrientationTypes.LEFT_TOP:
-    case OrientationTypes.RIGHT_BOTTOM:
       width = exif.imageSize?.width || exifr?.ImageWidth;
       height = exif.imageSize?.height || exifr?.ImageHeight;
       break;
+    case OrientationTypes.LEFT_TOP:
     case OrientationTypes.RIGHT_TOP:
+    case OrientationTypes.RIGHT_BOTTOM:
     case OrientationTypes.LEFT_BOTTOM:
+      // Orientations 5–8 all involve a 90° rotation, so the stored
+      // pixel dimensions are transposed relative to the display.
       width = exif.imageSize?.height || exifr?.ImageHeight;
       height = exif.imageSize?.width || exifr?.ImageWidth;
       break;

@@ -7,7 +7,6 @@ import {
   verifySessionToken,
 } from './jwt';
 import { KEY_CREDENTIALS_SIGN_IN_ERROR } from './index';
-import { isPathProtected } from '@/app/path';
 import { checkRateLimit } from '@/platforms/rate-limit';
 import sleep from '@/utility/sleep';
 
@@ -119,14 +118,6 @@ export const signOut = async () => {
   cookieStore.delete(SESSION_COOKIE_NAME);
 };
 
-export const handlers = {
-  GET: async () => {
-    const session = await auth();
-    return Response.json(session);
-  },
-  POST: async () => Response.json({ ok: true }),
-};
-
 export const runAuthenticatedAdminServerAction = async <T>(
   callback: () => T,
 ): Promise<T> => {
@@ -136,14 +127,4 @@ export const runAuthenticatedAdminServerAction = async <T>(
   } else {
     throw new Error('Unauthorized server action request');
   }
-};
-
-// Used by proxy.ts (edge middleware) to protect routes
-export const isRequestAuthorized = async (
-  pathname: string,
-  sessionToken?: string,
-) => {
-  if (!isPathProtected(pathname)) { return true; }
-  const session = await verifySessionToken(sessionToken);
-  return Boolean(session?.user);
 };

@@ -8,7 +8,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import Viewer from 'viewerjs';
+import type Viewer from 'viewerjs';
 import ZoomControls from './ZoomControls';
 
 export default function useImageZoomControls({
@@ -47,43 +47,50 @@ export default function useImageZoomControls({
   useEffect(() => {
     if (isEnabled) {
       const imageRef = (
-        selectImageElement?.(refImageContainer.current) ?? 
+        selectImageElement?.(refImageContainer.current) ??
         refImageContainer.current
       );
       if (imageRef) {
-        viewerRef.current = new Viewer(imageRef, {
-          navbar: false,
-          title: false,
-          toolbar: {
-            zoomIn: 1,
-            reset: 2,
-            zoomOut: 3,
-          },
-          ready: ({ target }) => {
-            refViewerContainer.current =
-              (target as any).viewer.viewer as HTMLDivElement;
-          },
-          url: (image: HTMLImageElement) => {
-            // Addresses Safari bug where images don't load
-            image.loading = 'eager';
-            return image.src;
-          },
-          show: () => {
-            setShouldRespondToKeyboardCommands?.(false);
-            setColorLight('#000');
-          },
-          hide: () => {
-            // Optimizes Safari status bar animation
-            setTimeout(() => setColorLight(undefined), 300);
-          },
-          hidden: () => {
-            setShouldRespondToKeyboardCommands?.(true);
-          },
-          zoom: ({ detail: { ratio } }) => {
-            setZoomLevel(ratio);
-          },
+        // viewerjs is a large dependency only needed once the user
+        // zooms, so it is loaded lazily (type-only import above).
+        let isDestroyed = false;
+        import('viewerjs').then(({ default: Viewer }) => {
+          if (isDestroyed) { return; }
+          viewerRef.current = new Viewer(imageRef, {
+            navbar: false,
+            title: false,
+            toolbar: {
+              zoomIn: 1,
+              reset: 2,
+              zoomOut: 3,
+            },
+            ready: ({ target }) => {
+              refViewerContainer.current =
+                (target as any).viewer.viewer as HTMLDivElement;
+            },
+            url: (image: HTMLImageElement) => {
+              // Addresses Safari bug where images don't load
+              image.loading = 'eager';
+              return image.src;
+            },
+            show: () => {
+              setShouldRespondToKeyboardCommands?.(false);
+              setColorLight('#000');
+            },
+            hide: () => {
+              // Optimizes Safari status bar animation
+              setTimeout(() => setColorLight(undefined), 300);
+            },
+            hidden: () => {
+              setShouldRespondToKeyboardCommands?.(true);
+            },
+            zoom: ({ detail: { ratio } }) => {
+              setZoomLevel(ratio);
+            },
+          });
         });
         return () => {
+          isDestroyed = true;
           viewerRef.current?.destroy();
           viewerRef.current = null;
         };

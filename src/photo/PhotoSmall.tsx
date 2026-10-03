@@ -5,6 +5,10 @@ import {
 } from '.';
 import { PhotoSetCategory } from '../category';
 import ImageSmall from '@/components/image/ImageSmall';
+import {
+  getSrcSetForImageUrl,
+  SIZES_FOR_PHOTO_THUMBNAIL,
+} from '@/platforms/next-image';
 import Link from 'next/link';
 import { clsx } from 'clsx/lite';
 import { pathForPhoto } from '@/app/path';
@@ -48,6 +52,11 @@ export default function PhotoSmall({
     >
       <ImageSmall
         src={photo.url}
+        srcSet={getSrcSetForImageUrl({
+          imageUrl: photo.url,
+          originalWidth: photo.width,
+        })}
+        sizes={SIZES_FOR_PHOTO_THUMBNAIL}
         aspectRatio={photo.aspectRatio}
         blurDataURL={photo.blurData}
         blurCompatibilityMode={doesPhotoNeedBlurCompatibility(photo)}

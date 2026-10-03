@@ -7,6 +7,10 @@ import {
 } from '.';
 import { PhotoSetCategory } from '../category';
 import ImageMedium from '@/components/image/ImageMedium';
+import {
+  getSrcSetForImageUrl,
+  SIZES_FOR_GRID_TILES,
+} from '@/platforms/next-image';
 import { clsx } from 'clsx/lite';
 import { pathForPhoto } from '@/app/path';
 import { SHOULD_PREFETCH_ALL_LINKS } from '@/app/config';
@@ -73,6 +77,11 @@ export default function PhotoMedium({
             </div>}
           <ImageMedium
             src={photo.url}
+            srcSet={getSrcSetForImageUrl({
+              imageUrl: photo.url,
+              originalWidth: photo.width,
+            })}
+            sizes={SIZES_FOR_GRID_TILES}
             aspectRatio={photo.aspectRatio}
             blurDataURL={photo.blurData}
             blurCompatibilityMode={doesPhotoNeedBlurCompatibility(photo)}

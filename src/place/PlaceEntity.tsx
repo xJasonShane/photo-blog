@@ -1,12 +1,21 @@
+'use client';
+
+import dynamic from 'next/dynamic';
 import IconPlace from '@/components/icons/IconPlace';
 import { Place } from '.';
 import EntityLink, {
   EntityLinkExternalProps,
 } from '@/components/entity/EntityLink';
 import { getDimensionsFromSize } from '@/utility/size';
-import PlaceMap from './PlaceMap';
 import SharedHover from '@/components/shared-hover/SharedHover';
 import clsx from 'clsx/lite';
+
+// OpenLayers is a large dependency and the map only renders on hover,
+// so it lives in its own lazily-loaded chunk.
+const PlaceMap = dynamic(() => import('./PlaceMap'), {
+  ssr: false,
+  loading: () => <div className="w-full h-full bg-main" />,
+});
 
 const { width, height } = getDimensionsFromSize(300, 16 / 9);
 

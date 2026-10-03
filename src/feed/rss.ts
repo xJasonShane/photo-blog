@@ -32,7 +32,7 @@ const formatPhotoForFeedRss = (photo: Photo): FeedPhotoRss => ({
 
 const feedPhotoToXml = (photo: FeedPhotoRss): string => {
   return `<item>
-    <title>${photo.title}</title>
+    <title>${formatStringForXml(photo.title || '')}</title>
     <link>${photo.link}</link>
     <pubDate>
       ${formatDate({ date: photo.pubDate, length: 'rss' })}
@@ -57,22 +57,34 @@ const feedPhotoToXml = (photo: FeedPhotoRss): string => {
   </item>`;
 };
 
-export const formatFeedRssXml = (photos: Photo[]) =>
-  `<?xml version="1.0" encoding="UTF-8"?>
+export const formatFeedRssXml = (photos: Photo[]) => {
+  // Channel-level freshness signal for feed readers; RFC 822 formatted
+  // via the same helper used for item pubDates.
+  const lastBuildDate = photos.length > 0
+    ? formatDate({
+      date: photos.reduce((max, { createdAt }) =>
+        createdAt > max ? createdAt : max, new Date(0)),
+      length: 'rss',
+    })
+    : undefined;
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
    <rss version="2.0"
      xmlns:content="http://purl.org/rss/1.0/modules/content/"
      xmlns:atom="http://www.w3.org/2005/Atom"
      xmlns:media="http://search.yahoo.com/mrss/"
    >
     <channel>
-      <title>${META_TITLE}</title>
+      <title>${formatStringForXml(META_TITLE)}</title>
       <atom:link
         href="${ABSOLUTE_PATH_RSS_XML}"
         rel="self"
         type="application/rss+xml"
       />
       <link>${BASE_URL}</link>
-      <description>${META_DESCRIPTION}</description>
+      <description>${formatStringForXml(META_DESCRIPTION ?? '')}</description>
+      ${lastBuildDate && `<lastBuildDate>${lastBuildDate}</lastBuildDate>`}
       ${photos.map(formatPhotoForFeedRss).map(feedPhotoToXml).join('\n')}
     </channel>
   </rss>`;
+};

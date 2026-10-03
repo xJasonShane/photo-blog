@@ -2,7 +2,6 @@ import { convertRgbToOklab, parseHex } from 'culori';
 import {
   AI_CONTENT_GENERATION_ENABLED,
 } from '@/app/config';
-import { FastAverageColor } from 'fast-average-color';
 import {
   convertOklchToJsonString,
   generateColorDataFromString,
@@ -51,12 +50,22 @@ const getImageDataFromUrl = async (_url: string) => {
   };
 };
 
-// algorithm library: fast-average-color
+// Straight RGB average over the decoded pixel data (the images are
+// opaque JPEG derivatives, so no alpha weighting is needed)
 const getAverageColorFromImageUrl = async (url: string) => {
   const { data } = await getImageDataFromUrl(url);
-  const fac = new FastAverageColor();
-  const color = fac.prepareResult(fac.getColorFromArray4(data));
-  return convertHexToOklch(color.hex);
+  const pixelCount = data.length / 4;
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  for (let i = 0; i < data.length; i += 4) {
+    r += data[i];
+    g += data[i + 1];
+    b += data[i + 2];
+  }
+  const toHex = (value: number) =>
+    Math.round(value / pixelCount).toString(16).padStart(2, '0');
+  return convertHexToOklch(`#${toHex(r)}${toHex(g)}${toHex(b)}`);
 };
 
 // algorithm library: extract-colors

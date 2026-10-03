@@ -22,8 +22,9 @@ import {
   NULL_CATEGORY_DATA,
 } from '@/category/data';
 
-// Cache for 24 hours
-export const dynamic = 'force-dynamic';
+// Cache for 24 hours (ISR — requires the OpenNext incremental cache
+// configured in open-next.config.ts to persist across isolates)
+export const revalidate = 86400;
 
 const PRIORITY_HOME             = 1;
 const PRIORITY_HOME_VIEW        = 0.9;
