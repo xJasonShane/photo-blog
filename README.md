@@ -100,8 +100,9 @@ pnpm upload:cf    # 构建并上传(不立即发布)
 
 1. 创建 R2 桶,绑定自定义域名或开启 `r2.dev` 公开访问;
 2. 创建 R2 API Token(对象读写权限),拿到 Access Key / Secret Key;
-3. 配置上表所列必填环境变量(部署环境或 `.dev.vars`);
-4. `pnpm deploy:cf` 完成部署。
+3. 在 [wrangler.jsonc](./wrangler.jsonc) 中把 `NEXT_INC_CACHE_R2_BUCKET` 绑定的 `bucket_name` 改为你的桶名——OpenNext 的跨隔离实例缓存(ISR / 数据缓存 / `revalidateTag`)依赖该绑定,对应的 Durable Object(`DOShardedTagCache` / `DOQueueHandler`)会在首次部署时自动创建;
+4. 配置上表所列必填环境变量(部署环境或 `.dev.vars`);
+5. `pnpm deploy:cf` 完成部署。
 
 > 本地预览(`preview:cf`)使用 [.dev.vars.example](./.dev.vars.example):复制为 `.dev.vars` 并填写真实值。预览模式下元数据同样走 S3 兼容 API,需要真实 R2 凭据。
 

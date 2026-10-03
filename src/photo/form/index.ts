@@ -470,6 +470,24 @@ export const convertPhotoToFormData = (photo: Photo): PhotoFormData => {
 
 // PREPARE FORM FOR DB INSERT
 
+// Location JSON is generated client-side by the place autocomplete field;
+// malformed data (stale or tampered forms) must not abort the photo save.
+const parseLocationJson = (
+  locationJson: string,
+  locationDisplayName?: string,
+) => {
+  try {
+    return {
+      ...JSON.parse(locationJson),
+      ...locationDisplayName && { nameFormatted: locationDisplayName },
+    };
+  } catch {
+    return locationDisplayName
+      ? { nameFormatted: locationDisplayName }
+      : undefined;
+  }
+};
+
 export const convertFormDataToPhotoDbInsert = (
   formData: FormData | Partial<PhotoFormData>,
 ): PhotoDbInsert => {
@@ -552,10 +570,10 @@ export const convertFormDataToPhotoDbInsert = (
       ? parseFloat(photoForm.longitude)
       : undefined,
     ...photoForm.location && {
-      location: {
-        ...JSON.parse(photoForm.location),
-        ...locationDisplayName && { nameFormatted: locationDisplayName },
-      },
+      location: parseLocationJson(
+        photoForm.location,
+        locationDisplayName,
+      ),
     },
     iso: photoForm.iso
       ? parseInt(photoForm.iso)

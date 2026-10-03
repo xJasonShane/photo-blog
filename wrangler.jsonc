@@ -14,6 +14,40 @@
     "directory": ".open-next/assets",
     "binding": "ASSETS"
   },
+  // OpenNext cross-isolate caching (see open-next.config.ts):
+  // - NEXT_INC_CACHE_R2_BUCKET persists the ISR/data cache in R2 and must
+  //   point at the same bucket as NEXT_PUBLIC_CLOUDFLARE_R2_BUCKET in the
+  //   deployment environment (replace the placeholder bucket name below
+  //   before deploying).
+  // - The Durable Object classes ship with the OpenNext worker and are
+  //   created automatically by the migration on first deploy.
+  "r2_buckets": [
+    {
+      "binding": "NEXT_INC_CACHE_R2_BUCKET",
+      "bucket_name": "placeholder-bucket-name"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "NEXT_TAG_CACHE_DO_SHARDED",
+        "class_name": "DOShardedTagCache"
+      },
+      {
+        "name": "NEXT_CACHE_DO_QUEUE",
+        "class_name": "DOQueueHandler"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": [
+        "DOShardedTagCache",
+        "DOQueueHandler"
+      ]
+    }
+  ],
   "observability": {
     "enabled": true
   }

@@ -27,8 +27,10 @@ import { Years } from '@/year';
 import { PhotoColorData } from '@/photo/color/client';
 import {
   getStoredPhotos,
+  getStoredPhotosWithEtag,
   saveStoredPhotos,
   getStoredAlbumData,
+  mutateStoredDocument,
   StoredPhoto,
 } from '@/platforms/store';
 
@@ -40,8 +42,26 @@ const getPhotosFromStore = async () => {
   return stored as unknown as PhotoDb[];
 };
 
-const savePhotosToStore = async (photos: PhotoDb[]) =>
-  saveStoredPhotos(photos as unknown as StoredPhoto[]);
+const savePhotosToStore = async (photos: PhotoDb[], etag?: string | null) =>
+  saveStoredPhotos(photos as unknown as StoredPhoto[], etag);
+
+/**
+ * Read-modify-write for the photos document with optimistic concurrency:
+ * the mutation must modify the photos array in place, and the write
+ * carries the ETag observed at read time — on conflict the cycle re-reads
+ * and replays instead of overwriting a concurrent change.
+ */
+const mutatePhotosInStore = async <T>(
+  mutate: (photos: PhotoDb[]) => T,
+): Promise<T> =>
+  mutateStoredDocument<PhotoDb[], T>({
+    read: async () => {
+      const { data, etag } = await getStoredPhotosWithEtag();
+      return { data: data as unknown as PhotoDb[], etag };
+    },
+    write: savePhotosToStore,
+    mutate,
+  });
 
 const hydratePhotos = (photos: PhotoDb[]) => photos.map(parsePhotoFromDb);
 
@@ -93,27 +113,27 @@ const takeLimitOffset = <T,>(
 
 // Must provide id as 8-character nanoid
 export const insertPhoto = async (photo: PhotoDbInsert) => {
-  const photos = await getPhotosFromStore();
   const now = new Date();
-  photos.push({
-    ...photo,
-    updatedAt: now,
-    createdAt: now,
-  } as unknown as PhotoDb);
-  await savePhotosToStore(photos);
+  await mutatePhotosInStore(photos => {
+    photos.push({
+      ...photo,
+      updatedAt: now,
+      createdAt: now,
+    } as unknown as PhotoDb);
+  });
 };
 
 export const updatePhoto = async (photo: PhotoDbInsert) => {
-  const photos = await getPhotosFromStore();
-  const index = photos.findIndex(({ id }) => id === photo.id);
-  if (index !== -1) {
-    photos[index] = {
-      ...photos[index],
-      ...photo,
-      updatedAt: new Date(),
-    } as unknown as PhotoDb;
-    await savePhotosToStore(photos);
-  }
+  await mutatePhotosInStore(photos => {
+    const index = photos.findIndex(({ id }) => id === photo.id);
+    if (index !== -1) {
+      photos[index] = {
+        ...photos[index],
+        ...photo,
+        updatedAt: new Date(),
+      } as unknown as PhotoDb;
+    }
+  });
 };
 
 export const updatePhotoTitleCaption = async (
@@ -124,40 +144,40 @@ export const updatePhotoTitleCaption = async (
   if (photoIds.length === 0) {
     return;
   }
-  const photos = await getPhotosFromStore();
   const now = new Date();
-  photoIds.forEach((id, index) => {
-    const photo = photos.find(({ id: photoId }) => photoId === id);
-    if (photo) {
-      photo.title = titles[index] ?? undefined;
-      photo.caption = captions[index] ?? undefined;
-      photo.updatedAt = now;
-    }
+  await mutatePhotosInStore(photos => {
+    photoIds.forEach((id, index) => {
+      const photo = photos.find(({ id: photoId }) => photoId === id);
+      if (photo) {
+        photo.title = titles[index] ?? undefined;
+        photo.caption = captions[index] ?? undefined;
+        photo.updatedAt = now;
+      }
+    });
   });
-  await savePhotosToStore(photos);
 };
 
 export const deletePhotoTagGlobally = async (tag: string) => {
-  const photos = await getPhotosFromStore();
-  photos.forEach(photo => {
-    if (photo.tags?.includes(tag)) {
-      photo.tags = photo.tags.filter(t => t !== tag);
-    }
+  await mutatePhotosInStore(photos => {
+    photos.forEach(photo => {
+      if (photo.tags?.includes(tag)) {
+        photo.tags = photo.tags.filter(t => t !== tag);
+      }
+    });
   });
-  await savePhotosToStore(photos);
 };
 
 export const renamePhotoTagGlobally = async (
   tag: string,
   updatedTag: string,
 ) => {
-  const photos = await getPhotosFromStore();
-  photos.forEach(photo => {
-    if (photo.tags?.includes(tag)) {
-      photo.tags = photo.tags.map(t => t === tag ? updatedTag : t);
-    }
+  await mutatePhotosInStore(photos => {
+    photos.forEach(photo => {
+      if (photo.tags?.includes(tag)) {
+        photo.tags = photo.tags.map(t => t === tag ? updatedTag : t);
+      }
+    });
   });
-  await savePhotosToStore(photos);
 };
 
 export const setPhotoVisibilityForIds = async (
@@ -165,54 +185,58 @@ export const setPhotoVisibilityForIds = async (
   hidden: boolean,
   excludeFromFeeds: boolean,
 ) => {
-  const photos = await getPhotosFromStore();
   const now = new Date();
-  photos.forEach(photo => {
-    if (photoIds.includes(photo.id)) {
-      photo.hidden = hidden;
-      photo.excludeFromFeeds = excludeFromFeeds;
-      photo.updatedAt = now;
-    }
+  await mutatePhotosInStore(photos => {
+    photos.forEach(photo => {
+      if (photoIds.includes(photo.id)) {
+        photo.hidden = hidden;
+        photo.excludeFromFeeds = excludeFromFeeds;
+        photo.updatedAt = now;
+      }
+    });
   });
-  await savePhotosToStore(photos);
 };
 
 export const addTagsToPhotos = async (tags: string[], photoIds: string[]) => {
-  const photos = await getPhotosFromStore();
-  photos.forEach(photo => {
-    if (photoIds.includes(photo.id)) {
-      photo.tags = Array.from(new Set([...(photo.tags ?? []), ...tags]));
-    }
+  await mutatePhotosInStore(photos => {
+    photos.forEach(photo => {
+      if (photoIds.includes(photo.id)) {
+        photo.tags = Array.from(new Set([...(photo.tags ?? []), ...tags]));
+      }
+    });
   });
-  await savePhotosToStore(photos);
 };
 
 export const deletePhotoRecipeGlobally = async (recipe: string) => {
-  const photos = await getPhotosFromStore();
-  photos.forEach(photo => {
-    if (photo.recipeTitle === recipe) {
-      photo.recipeTitle = undefined;
-    }
+  await mutatePhotosInStore(photos => {
+    photos.forEach(photo => {
+      if (photo.recipeTitle === recipe) {
+        photo.recipeTitle = undefined;
+      }
+    });
   });
-  await savePhotosToStore(photos);
 };
 
 export const renamePhotoRecipeGlobally = async (
   recipe: string,
   updatedRecipe: string,
 ) => {
-  const photos = await getPhotosFromStore();
-  photos.forEach(photo => {
-    if (photo.recipeTitle === recipe) {
-      photo.recipeTitle = updatedRecipe;
-    }
+  await mutatePhotosInStore(photos => {
+    photos.forEach(photo => {
+      if (photo.recipeTitle === recipe) {
+        photo.recipeTitle = updatedRecipe;
+      }
+    });
   });
-  await savePhotosToStore(photos);
 };
 
 export const deletePhoto = async (id: string) => {
-  const photos = await getPhotosFromStore();
-  await savePhotosToStore(photos.filter(photo => photo.id !== id));
+  await mutatePhotosInStore(photos => {
+    const index = photos.findIndex(photo => photo.id === id);
+    if (index !== -1) {
+      photos.splice(index, 1);
+    }
+  });
 };
 
 export const getPhotosMostRecentUpdate = async () => {
@@ -397,17 +421,17 @@ export const updateAllMatchingRecipeTitles = async (
   data: string,
   film: string,
 ) => {
-  const photos = await getPhotosFromStore();
-  photos.forEach(photo => {
-    if (
-      photo.recipeTitle === undefined &&
-      recipeDataToString(photo.recipeData) === data &&
-      photo.film === film
-    ) {
-      photo.recipeTitle = title;
-    }
+  await mutatePhotosInStore(photos => {
+    photos.forEach(photo => {
+      if (
+        photo.recipeTitle === undefined &&
+        recipeDataToString(photo.recipeData) === data &&
+        photo.film === film
+      ) {
+        photo.recipeTitle = title;
+      }
+    });
   });
-  await savePhotosToStore(photos);
 };
 
 export const getUniqueFilms = async (): Promise<Films> => {
@@ -604,12 +628,12 @@ export const updateColorDataForPhoto = async (
   colorData: string,
   colorSort: number,
 ) => {
-  const photos = await getPhotosFromStore();
-  const photo = photos.find(photo => photo.id === photoId);
-  if (photo) {
-    (photo as unknown as Record<string, unknown>).colorData = colorData;
-    (photo as unknown as Record<string, unknown>).colorSort = colorSort;
-    photo.updatedAt = new Date();
-    await savePhotosToStore(photos);
-  }
+  await mutatePhotosInStore(photos => {
+    const photo = photos.find(photo => photo.id === photoId);
+    if (photo) {
+      (photo as unknown as Record<string, unknown>).colorData = colorData;
+      (photo as unknown as Record<string, unknown>).colorSort = colorSort;
+      photo.updatedAt = new Date();
+    }
+  });
 };

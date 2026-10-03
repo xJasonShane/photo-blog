@@ -97,6 +97,54 @@ import {
   COMMAND_K_PHOTO_LIMIT,
   getPhotosQueryData,
 } from '@/query/data';
+import { z } from 'zod';
+
+// Input validation: server actions are authenticated, but without schema
+// validation malformed input could throw obscure errors mid-write or
+// write nonsense into the metadata documents.
+
+const PHOTO_ID_SCHEMA = z.string().min(1).max(64);
+const TAG_SCHEMA = z.string().min(1).max(200);
+const STORAGE_FILE_NAME_PATTERN =
+  /^(photo|upload)-[A-Za-z0-9-]+\.(jpe?g|png)$/i;
+
+const AI_IMAGE_QUERY_VALUES = [
+  'title',
+  'caption',
+  'title-and-caption',
+  'tags',
+  'semantic',
+] as const satisfies readonly AiImageQuery[];
+
+const storageUrlSchema = z.string()
+  .min(1)
+  .max(2048)
+  .refine(url => {
+    try {
+      return STORAGE_FILE_NAME_PATTERN
+        .test(getFileNamePartsFromStorageUrl(url).fileName);
+    } catch {
+      return false;
+    }
+  }, 'URL does not point at photo storage');
+
+const parseActionInput = <T>(schema: z.ZodType<T>, input: unknown): T => {
+  const result = schema.safeParse(input);
+  if (!result.success) {
+    throw new Error(
+      `Invalid server action input: ${
+        result.error.issues[0]?.message ?? 'validation failed'
+      }`,
+    );
+  }
+  return result.data;
+};
+
+const formDataString = (formData: FormData, key: string) =>
+  parseActionInput(
+    z.string().min(1).max(200),
+    formData.get(key),
+  );
 
 // Private actions
 
@@ -239,7 +287,10 @@ const addUpload = async ({
 };
 
 export const addUploadAction = async (args: Parameters<typeof addUpload>[0]) =>
-  runAuthenticatedAdminServerAction(() => addUpload(args));
+  runAuthenticatedAdminServerAction(() => {
+    parseActionInput(z.object({ url: storageUrlSchema }), args);
+    return addUpload(args);
+  });
 
 export const addUploadsAction = async ({
   uploadUrls,
@@ -262,6 +313,10 @@ export const addUploadsAction = async ({
   albumTitles?: string[]
 }) =>
   runAuthenticatedAdminServerAction(async () => {
+    const validUploadUrls = parseActionInput(
+      z.array(storageUrlSchema).min(1).max(500),
+      uploadUrls,
+    );
     const PROGRESS_TASK_COUNT = AI_CONTENT_GENERATION_ENABLED ? 5 : 4;
 
     const addedUploadUrls: string[] = [];
@@ -289,7 +344,7 @@ export const addUploadsAction = async ({
 
     (async () => {
       try {
-        for (const [index, url] of uploadUrls.entries()) {
+        for (const [index, url] of validUploadUrls.entries()) {
           currentUploadUrl = url;
           progress = 0;
           const title = uploadTitles[index];
@@ -314,7 +369,7 @@ export const addUploadsAction = async ({
         };
       } catch (error: any) {
         // eslint-disable-next-line max-len
-        stream.error(`${error.message} (${addedUploadUrls.length} of ${uploadUrls.length} photos successfully added)`);
+        stream.error(`${error.message} (${addedUploadUrls.length} of ${validUploadUrls.length} photos successfully added)`);
       }
       stream.done();
     })();
@@ -407,7 +462,7 @@ export const deletePhotoAction = async (
 
 export const deletePhotoTagGloballyFormAction = async (formData: FormData) =>
   runAuthenticatedAdminServerAction(async () => {
-    const tag = formData.get('tag') as string;
+    const tag = formDataString(formData, 'tag');
     await deletePhotoTagGlobally(tag);
     revalidatePhotosKey();
     revalidateAdminPaths();
@@ -427,10 +482,10 @@ export const deletePhotoTagGloballyAction = async (
 
 export const renamePhotoTagGloballyAction = async (formData: FormData) =>
   runAuthenticatedAdminServerAction(async () => {
-    const tag = formData.get('tag') as string;
-    const updatedTag = formData.get('updatedTag') as string;
+    const tag = formDataString(formData, 'tag');
+    const updatedTag = formDataString(formData, 'updatedTag');
 
-    if (tag && updatedTag && tag !== updatedTag) {
+    if (tag !== updatedTag) {
       await renamePhotoTagGlobally(tag, updatedTag);
       revalidatePhotosKey();
       revalidateTagsKey();
@@ -462,9 +517,10 @@ export const getRecipeDataForTitleAction = async (recipeTitle: string) =>
   );
 
 export const getAiColorAction = async (url: string) =>
-  runAuthenticatedAdminServerAction(async () =>
-    await getColorFromAI(url),
-  );
+  runAuthenticatedAdminServerAction(async () => {
+    const validUrl = parseActionInput(storageUrlSchema, url);
+    return await getColorFromAI(validUrl);
+  });
 
 export const storeColorDataForPhotoAction = async (
   photoId: string,
@@ -510,7 +566,7 @@ export const recalculateColorDataForAllPhotosAction = async () =>
 
 export const deletePhotoRecipeGloballyAction = async (formData: FormData) =>
   runAuthenticatedAdminServerAction(async () => {
-    const recipe = formData.get('recipe') as string;
+    const recipe = formDataString(formData, 'recipe');
 
     await deletePhotoRecipeGlobally(recipe);
 
@@ -520,10 +576,10 @@ export const deletePhotoRecipeGloballyAction = async (formData: FormData) =>
 
 export const renamePhotoRecipeGloballyAction = async (formData: FormData) =>
   runAuthenticatedAdminServerAction(async () => {
-    const recipe = formData.get('recipe') as string;
-    const updatedRecipe = formData.get('updatedRecipe') as string;
+    const recipe = formDataString(formData, 'recipe');
+    const updatedRecipe = formDataString(formData, 'updatedRecipe');
 
-    if (recipe && updatedRecipe && recipe !== updatedRecipe) {
+    if (recipe !== updatedRecipe) {
       await renamePhotoRecipeGlobally(recipe, updatedRecipe);
       revalidatePhotosKey();
       revalidateRecipesKey();
@@ -536,16 +592,27 @@ export const replacePhotoStorageAction = async (
   updatedStorageUrl: string,
 ) =>
   runAuthenticatedAdminServerAction(async () => {
-    const photo = await getPhoto(photoId, true);
-    
+    const {
+      photoId: validPhotoId,
+      updatedStorageUrl: validStorageUrl,
+    } = parseActionInput(
+      z.object({
+        photoId: PHOTO_ID_SCHEMA,
+        updatedStorageUrl: storageUrlSchema,
+      }),
+      { photoId, updatedStorageUrl },
+    );
+
+    const photo = await getPhoto(validPhotoId, true);
+
     if (photo) {
       const {
         fileExtension: extension,
-      } = getFileNamePartsFromStorageUrl(updatedStorageUrl);
+      } = getFileNamePartsFromStorageUrl(validStorageUrl);
 
       const {
         formDataFromExif,
-      } = await extractImageDataFromBlobPath(updatedStorageUrl, {
+      } = await extractImageDataFromBlobPath(validStorageUrl, {
         generateBlurData: BLUR_ENABLED,
       });
 
@@ -565,7 +632,7 @@ export const replacePhotoStorageAction = async (
       await updatePhoto({
         ...convertPhotoToPhotoDbInsert({
           ...photo,
-          url: updatedStorageUrl,
+          url: validStorageUrl,
           extension,
         }),
         ...imageFields,
@@ -581,8 +648,12 @@ export const replacePhotoStorageAction = async (
 
 export const deleteUploadsAction = async (urls: string[]) =>
   runAuthenticatedAdminServerAction(async () => {
-    await Promise.all(urls.map(url => deleteFile(url)));
-    if (urls.length > 1) {
+    const validUrls = parseActionInput(
+      z.array(storageUrlSchema).min(1).max(1000),
+      urls,
+    );
+    await Promise.all(validUrls.map(url => deleteFile(url)));
+    if (validUrls.length > 1) {
       // Only refresh state when deleting multiple uploads
       revalidateAdminPaths();
     }
@@ -594,7 +665,9 @@ export const getExifDataAction = async (
   url: string,
 ): Promise<Partial<PhotoFormData>> =>
   runAuthenticatedAdminServerAction(async () => {
-    const { formDataFromExif } = await extractImageDataFromBlobPath(url);
+    const validUrl = parseActionInput(storageUrlSchema, url);
+    const { formDataFromExif } =
+      await extractImageDataFromBlobPath(validUrl);
     if (formDataFromExif) {
       return formDataFromExif;
     } else {
@@ -714,7 +787,14 @@ export const syncPhotosAction = async (photosToSync: {
   onlySyncColorData?: boolean,
 }[]) =>
   runAuthenticatedAdminServerAction(async () => {
-    for (const { photoId, onlySyncColorData } of photosToSync) {
+    const validPhotosToSync = parseActionInput(
+      z.array(z.object({
+        photoId: PHOTO_ID_SCHEMA,
+        onlySyncColorData: z.boolean().optional(),
+      })).max(1000),
+      photosToSync,
+    );
+    for (const { photoId, onlySyncColorData } of validPhotosToSync) {
       await (onlySyncColorData
         ? storeColorDataForPhotoAction(photoId)
         : syncPhotoAction(photoId, { isBatch: true }));
@@ -731,6 +811,14 @@ export const streamAiImageQueryAction = async (
   existingTitle?: string,
 ) =>
   runAuthenticatedAdminServerAction(async () => {
+    parseActionInput(
+      z.object({
+        imageBase64: z.string().min(1).max(10_000_000),
+        query: z.enum(AI_IMAGE_QUERY_VALUES),
+        existingTitle: z.string().max(300).optional(),
+      }),
+      { imageBase64, query, existingTitle },
+    );
     const existingTags = await getUniqueTags();
     return streamOpenAiImageQuery(
       imageBase64,
@@ -739,7 +827,8 @@ export const streamAiImageQueryAction = async (
   });
 
 export const getImageBlurAction = async (url: string) =>
-  runAuthenticatedAdminServerAction(() => blurImageFromUrl(url));
+  runAuthenticatedAdminServerAction(() =>
+    blurImageFromUrl(parseActionInput(storageUrlSchema, url)));
 
 // Batch actions
 
@@ -747,6 +836,17 @@ export const getPhotoOptionsCountForPathAction = async (path: string) =>
   runAuthenticatedAdminServerAction(async () =>
     getPhotoOptionsCountForPath(path),
   );
+
+const BATCH_PHOTO_ACTION_SCHEMA = z.object({
+  photoIds: z.array(PHOTO_ID_SCHEMA).max(10000).default([]),
+  // photoOptions only feeds the (read-only) query layer, so it gets a
+  // light structural check instead of a full schema.
+  photoOptions: z.unknown().optional(),
+  tags: z.array(TAG_SCHEMA).max(100).default([]),
+  albumTitles: z.array(z.string().min(1).max(200)).max(100).default([]),
+  visibility: z.enum(['default', 'exclude', 'private']).optional(),
+  action: z.enum(['favorite', 'delete']).optional(),
+});
 
 export const batchPhotoAction = async ({
   photoIds: _photoIds = [],
@@ -763,27 +863,41 @@ export const batchPhotoAction = async ({
   visibility?: VisibilityValue
   action?: 'favorite' | 'delete'
 }) => runAuthenticatedAdminServerAction(async () => {
-  const photoIds = _photoIds.length > 0
-    ? _photoIds
+  const {
+    photoIds: validPhotoIds,
+    tags: validTags,
+    albumTitles: validAlbumTitles,
+    visibility: validVisibility,
+    action: validAction,
+  } = parseActionInput(BATCH_PHOTO_ACTION_SCHEMA, {
+    photoIds: _photoIds,
+    tags,
+    albumTitles,
+    visibility,
+    action,
+  });
+
+  const photoIds = validPhotoIds.length > 0
+    ? validPhotoIds
     : photoOptions !== undefined
       ? await getPhotoIds(photoOptions)
       : [];
 
-  if (tags.length > 0) {
-    await addTagsToPhotos(tags, photoIds);
+  if (validTags.length > 0) {
+    await addTagsToPhotos(validTags, photoIds);
   }
-  if (albumTitles.length > 0) {
-    const albumIds = await createAlbumsAndGetIds(albumTitles);
+  if (validAlbumTitles.length > 0) {
+    const albumIds = await createAlbumsAndGetIds(validAlbumTitles);
     await addPhotoAlbumIds(photoIds, albumIds);
   }
-  if (visibility !== undefined) {
+  if (validVisibility !== undefined) {
     await setPhotoVisibilityForIds(
       photoIds,
-      visibility === 'private',
-      visibility === 'exclude',
+      validVisibility === 'private',
+      validVisibility === 'exclude',
     );
   }
-  switch (action) {
+  switch (validAction) {
     case 'favorite':
       await addTagsToPhotos([TAG_FAVS], photoIds);
       break;
@@ -800,6 +914,12 @@ export const batchPhotoAction = async ({
   revalidateAllKeysAndPaths();
 });
 
+const PHOTO_TITLE_UPDATE_SCHEMA = z.object({
+  photoId: PHOTO_ID_SCHEMA,
+  title: z.string().max(300),
+  caption: z.string().max(600),
+});
+
 export const batchUpdatePhotoTitlesAction = async (
   updates: {
     photoId: string
@@ -807,10 +927,14 @@ export const batchUpdatePhotoTitlesAction = async (
     caption: string
   }[],
 ) => runAuthenticatedAdminServerAction(async () => {
+  const validUpdates = parseActionInput(
+    z.array(PHOTO_TITLE_UPDATE_SCHEMA).max(1000),
+    updates,
+  );
   await updatePhotoTitleCaption(
-    updates.map(({ photoId }) => photoId),
-    updates.map(({ title }) => title.trim() || null),
-    updates.map(({ caption }) => caption.trim() || null),
+    validUpdates.map(({ photoId }) => photoId),
+    validUpdates.map(({ title }) => title.trim() || null),
+    validUpdates.map(({ caption }) => caption.trim() || null),
   );
   revalidateAllKeysAndPaths();
 });

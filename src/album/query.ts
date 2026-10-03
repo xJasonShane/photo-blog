@@ -5,9 +5,12 @@ import {
 } from '.';
 import {
   getStoredAlbumData,
+  getStoredAlbumDataWithEtag,
   getStoredPhotos,
   saveStoredAlbumData,
+  mutateStoredDocument,
   StoredAlbum,
+  StoredAlbumData,
 } from '@/platforms/store';
 
 // Kept for API compatibility with the original Postgres implementation
@@ -19,31 +22,44 @@ const generateAlbumId = () =>
     ? crypto.randomUUID()
     : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
+/**
+ * Read-modify-write for the albums document with optimistic concurrency
+ * (see `mutateStoredDocument`): mutations must modify `data` in place.
+ */
+const mutateAlbumDataInStore = async <T>(
+  mutate: (data: StoredAlbumData) => T,
+): Promise<T> =>
+  mutateStoredDocument<StoredAlbumData, T>({
+    read: getStoredAlbumDataWithEtag,
+    write: saveStoredAlbumData,
+    mutate,
+  });
+
 export const insertAlbum = async (album: Omit<Album, 'id'>) => {
-  const data = await getStoredAlbumData();
-  const id = generateAlbumId();
   const now = new Date();
-  data.albums.push({
-    id,
-    ...album,
-    updatedAt: now,
-    createdAt: now,
-  } as unknown as StoredAlbum);
-  await saveStoredAlbumData(data);
-  return id;
+  return mutateAlbumDataInStore(data => {
+    const id = generateAlbumId();
+    data.albums.push({
+      id,
+      ...album,
+      updatedAt: now,
+      createdAt: now,
+    } as unknown as StoredAlbum);
+    return id;
+  });
 };
 
 export const updateAlbum = async (album: Album) => {
-  const data = await getStoredAlbumData();
-  const index = data.albums.findIndex(({ id }) => id === album.id);
-  if (index !== -1) {
-    data.albums[index] = {
-      ...data.albums[index],
-      ...album,
-      updatedAt: new Date(),
-    } as unknown as StoredAlbum;
-    await saveStoredAlbumData(data);
-  }
+  await mutateAlbumDataInStore(data => {
+    const index = data.albums.findIndex(({ id }) => id === album.id);
+    if (index !== -1) {
+      data.albums[index] = {
+        ...data.albums[index],
+        ...album,
+        updatedAt: new Date(),
+      } as unknown as StoredAlbum;
+    }
+  });
 };
 
 export const getAlbumFromSlug = async (slug: string) => {
@@ -54,10 +70,12 @@ export const getAlbumFromSlug = async (slug: string) => {
 };
 
 export const deleteAlbum = async (id: string) => {
-  const data = await getStoredAlbumData();
-  await saveStoredAlbumData({
-    albums: data.albums.filter(album => album.id !== id),
-    albumPhoto: data.albumPhoto.filter(link => link.albumId !== id),
+  await mutateAlbumDataInStore(data => {
+    const albumIndex = data.albums.findIndex(album => album.id === id);
+    if (albumIndex !== -1) {
+      data.albums.splice(albumIndex, 1);
+    }
+    data.albumPhoto = data.albumPhoto.filter(link => link.albumId !== id);
   });
 };
 
@@ -76,10 +94,10 @@ export const getAlbumsWithMeta = async (): Promise<Albums> => {
 };
 
 export const clearPhotoAlbumIds = async (photoId: string) => {
-  const data = await getStoredAlbumData();
-  await saveStoredAlbumData({
-    ...data,
-    albumPhoto: data.albumPhoto.filter(link => link.photoId !== photoId),
+  await mutateAlbumDataInStore(data => {
+    data.albumPhoto = data.albumPhoto.filter(
+      link => link.photoId !== photoId,
+    );
   });
 };
 
@@ -88,17 +106,17 @@ export const addPhotoAlbumIds = async (
   albumIds: string[],
 ) => {
   if (photoIds.length > 0 && albumIds.length > 0) {
-    const data = await getStoredAlbumData();
-    albumIds.forEach(albumId => {
-      photoIds.forEach((photoId, index) => {
-        const exists = data.albumPhoto
-          .some(link => link.albumId === albumId && link.photoId === photoId);
-        if (!exists) {
-          data.albumPhoto.push({ albumId, photoId, sortOrder: index });
-        }
+    await mutateAlbumDataInStore(data => {
+      albumIds.forEach(albumId => {
+        photoIds.forEach((photoId, index) => {
+          const exists = data.albumPhoto
+            .some(link => link.albumId === albumId && link.photoId === photoId);
+          if (!exists) {
+            data.albumPhoto.push({ albumId, photoId, sortOrder: index });
+          }
+        });
       });
     });
-    await saveStoredAlbumData(data);
   }
 };
 

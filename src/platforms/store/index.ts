@@ -6,6 +6,12 @@
  * The S3 API driver works uniformly on Cloudflare Workers, EdgeOne Pages,
  * and local Node.js development; a local filesystem driver is used as a
  * zero-config fallback during development.
+ *
+ * Writes are serialized with optimistic concurrency: read-modify-write
+ * cycles go through `mutateStoredDocument`, which carries the ETag
+ * observed at read time as a conditional-write precondition (If-Match /
+ * If-None-Match) and replays the whole cycle on conflict (HTTP 412)
+ * instead of overwriting concurrent changes.
  */
 import { AwsClient } from 'aws4fetch';
 
@@ -26,6 +32,21 @@ const KEY_PHOTOS = '_data/photos.json';
 const KEY_ALBUMS = '_data/albums.json';
 const KEY_LIBRARY = '_data/library.json';
 
+export class StoreWriteConflictError extends Error {
+  constructor(key: string) {
+    super(
+      `Store write conflict on "${key}" ` +
+      '(document changed during read-modify-write)',
+    );
+    this.name = 'StoreWriteConflictError';
+  }
+}
+
+export const isStoreWriteConflictError = (
+  e: unknown,
+): e is StoreWriteConflictError =>
+  e instanceof Error && e.name === 'StoreWriteConflictError';
+
 interface TextStoreDriver {
   /**
    * Resolves `null` only when the document does not exist. Transient
@@ -33,8 +54,19 @@ interface TextStoreDriver {
    * failed read surfacing as an error rather than masquerading as empty
    * data, which would let the next full-document write wipe it.
    */
-  getText(key: string): Promise<string | null>
-  putText(key: string, value: string): Promise<void>
+  getText(key: string): Promise<{ text: string, etag: string } | null>
+  /**
+   * Conditional write semantics for `expectedEtag`:
+   * - `undefined`: unconditional overwrite
+   * - `null`: create-only (fails if the document exists)
+   * - non-empty string: overwrite only if the current ETag matches
+   * An empty string (ETag header unavailable) degrades to unconditional.
+   */
+  putText(
+    key: string,
+    value: string,
+    expectedEtag?: string | null,
+  ): Promise<void>
   deleteText?(key: string): Promise<void>
 }
 
@@ -67,14 +99,29 @@ const s3Driver: TextStoreDriver = {
     if (!response.ok) {
       throw new Error(`R2 store read failed for "${key}" (${response.status})`);
     }
-    return response.text();
+    return {
+      text: await response.text(),
+      // Quoted S3-style ETag; echoed as-is in the If-Match precondition.
+      etag: response.headers.get('ETag') ?? '',
+    };
   },
-  async putText(key, value) {
+  async putText(key, value, expectedEtag) {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (expectedEtag === null) {
+      headers['If-None-Match'] = '*';
+    } else if (expectedEtag) {
+      headers['If-Match'] = expectedEtag;
+    }
     const response = await getAwsClient().fetch(`${R2_BASE_URL}/${key}`, {
       method: 'PUT',
       body: value,
-      headers: { 'Content-Type': 'application/json' },
+      headers,
     });
+    if (response.status === 412) {
+      throw new StoreWriteConflictError(key);
+    }
     if (!response.ok) {
       throw new Error(
         `R2 store write failed for "${key}" (${response.status})`,
@@ -95,6 +142,16 @@ const localDriverModule = () =>
   import(/* webpackIgnore: true */ /* turbopackIgnore: true */ 'node:fs/promises')
     .then(fs => fs as unknown as typeof import('node:fs/promises'));
 
+const sha256Hex = async (value: string) => {
+  const digest = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(value),
+  );
+  return Array.from(new Uint8Array(digest))
+    .map(byte => byte.toString(16).padStart(2, '0'))
+    .join('');
+};
+
 const isNodeFileNotFoundError = (e: unknown) =>
   typeof e === 'object' && e !== null && 'code' in e &&
   ['ENOENT', 'ENOTDIR'].includes((e as { code?: string }).code ?? '');
@@ -103,17 +160,36 @@ const localDriver: TextStoreDriver = {
   async getText(key) {
     const fs = await localDriverModule();
     try {
-      return await fs.readFile(`${LOCAL_STORE_DIR}/${key}`, 'utf8');
+      const text =
+        await fs.readFile(`${LOCAL_STORE_DIR}/${key}`, 'utf8');
+      return { text, etag: await sha256Hex(text) };
     } catch (e) {
       if (isNodeFileNotFoundError(e)) { return null; }
       throw e;
     }
   },
-  async putText(key, value) {
+  async putText(key, value, expectedEtag) {
     const fs = await localDriverModule();
     await fs.mkdir(`${LOCAL_STORE_DIR}/${key.split('/').slice(0, -1).join('/')}`, {
       recursive: true,
     });
+    if (expectedEtag !== undefined) {
+      let currentEtag: string | null;
+      try {
+        const currentText =
+          await fs.readFile(`${LOCAL_STORE_DIR}/${key}`, 'utf8');
+        currentEtag = await sha256Hex(currentText);
+      } catch (e) {
+        if (!isNodeFileNotFoundError(e)) { throw e; }
+        currentEtag = null;
+      }
+      const preconditionSatisfied = expectedEtag === null
+        ? currentEtag === null
+        : currentEtag !== null && currentEtag === expectedEtag;
+      if (!preconditionSatisfied) {
+        throw new StoreWriteConflictError(key);
+      }
+    }
     await fs.writeFile(`${LOCAL_STORE_DIR}/${key}`, value, 'utf8');
   },
 };
@@ -125,11 +201,13 @@ const getDriver = (): TextStoreDriver =>
 // Read/write helpers
 // ---------------------------------------------------------------------------
 
-const readJson = async <T>(key: string): Promise<T | undefined> => {
-  const text = await getDriver().getText(key);
-  if (text === null) { return undefined; }
+const readJsonWithEtag = async <T>(key: string): Promise<{
+  data: T | undefined, etag: string | null,
+}> => {
+  const result = await getDriver().getText(key);
+  if (result === null) { return { data: undefined, etag: null }; }
   try {
-    return JSON.parse(text) as T;
+    return { data: JSON.parse(result.text) as T, etag: result.etag };
   } catch (e) {
     // Fail closed on corrupted documents — treating them as missing
     // would let the next full-document write replace all metadata.
@@ -138,8 +216,51 @@ const readJson = async <T>(key: string): Promise<T | undefined> => {
   }
 };
 
-const writeJson = async <T>(key: string, value: T) => {
-  await getDriver().putText(key, JSON.stringify(value));
+const writeJson = async <T>(
+  key: string,
+  value: T,
+  expectedEtag?: string | null,
+) => {
+  await getDriver().putText(
+    key,
+    JSON.stringify(value),
+    expectedEtag === null ? null : expectedEtag || undefined,
+  );
+};
+
+const MUTATE_STORE_MAX_ATTEMPTS = 5;
+
+export { MUTATE_STORE_MAX_ATTEMPTS };
+
+/**
+ * Runs a read-modify-write cycle with optimistic concurrency: the write
+ * carries the ETag observed at read time, and on conflict the cycle
+ * re-reads the document and replays the mutation. The mutation must
+ * modify `data` in place (or its properties) — the possibly-replaced
+ * object is what gets written.
+ */
+export const mutateStoredDocument = async <T, R>(args: {
+  read: () => Promise<{ data: T, etag: string | null }>
+  write: (data: T, etag: string | null) => Promise<void>
+  mutate: (data: T) => R | Promise<R>
+}): Promise<R> => {
+  let lastConflict: StoreWriteConflictError | undefined;
+  for (let attempt = 0; attempt < MUTATE_STORE_MAX_ATTEMPTS; attempt++) {
+    const { data, etag } = await args.read();
+    const result = await args.mutate(data);
+    try {
+      await args.write(data, etag);
+      return result;
+    } catch (e) {
+      if (isStoreWriteConflictError(e)) {
+        lastConflict = e;
+      } else {
+        throw e;
+      }
+    }
+  }
+  throw lastConflict ??
+    new Error('Store write conflict retry budget exhausted');
 };
 
 export const testStoreConnection = async () => {
@@ -187,18 +308,29 @@ const hydratePhotoDates = (photo: Record<string, unknown>) => {
   return hydrated;
 };
 
-export const getStoredPhotos = async (): Promise<StoredPhoto[]> => {
-  const data = await readJson<{ photos: StoredPhoto[] }>(KEY_PHOTOS);
+export const getStoredPhotosWithEtag = async (): Promise<{
+  data: StoredPhoto[], etag: string | null,
+}> => {
+  const { data, etag } =
+    await readJsonWithEtag<{ photos: StoredPhoto[] }>(KEY_PHOTOS);
   if (data && !Array.isArray(data.photos)) {
     throw new Error(
       `Stored photos document "${KEY_PHOTOS}" has an unexpected shape`);
   }
-  return (data?.photos ?? [])
-    .map(photo => hydratePhotoDates(photo) as StoredPhoto);
+  return {
+    data: (data?.photos ?? [])
+      .map(photo => hydratePhotoDates(photo) as StoredPhoto),
+    etag,
+  };
 };
 
-export const saveStoredPhotos = async (photos: StoredPhoto[]) =>
-  writeJson(KEY_PHOTOS, { photos });
+export const getStoredPhotos = async (): Promise<StoredPhoto[]> =>
+  (await getStoredPhotosWithEtag()).data;
+
+export const saveStoredPhotos = async (
+  photos: StoredPhoto[],
+  expectedEtag?: string | null,
+) => writeJson(KEY_PHOTOS, { photos }, expectedEtag);
 
 // ---------------------------------------------------------------------------
 // Albums
@@ -212,7 +344,7 @@ export type StoredAlbumPhoto = {
   sortOrder: number
 };
 
-type StoredAlbumData = {
+export type StoredAlbumData = {
   albums: StoredAlbum[]
   albumPhoto: StoredAlbumPhoto[]
 };
@@ -228,23 +360,34 @@ const hydrateAlbumDates = (album: Record<string, unknown>) => {
   return hydrated;
 };
 
-export const getStoredAlbumData = async (): Promise<StoredAlbumData> => {
-  const data = await readJson<StoredAlbumData>(KEY_ALBUMS);
+export const getStoredAlbumDataWithEtag = async (): Promise<{
+  data: StoredAlbumData, etag: string | null,
+}> => {
+  const { data, etag } =
+    await readJsonWithEtag<StoredAlbumData>(KEY_ALBUMS);
   if (data &&
     (!Array.isArray(data.albums) || !Array.isArray(data.albumPhoto))) {
     throw new Error(
       `Stored albums document "${KEY_ALBUMS}" has an unexpected shape`);
   }
   return {
-    albums: (data?.albums ?? []).map(
-      album => hydrateAlbumDates(album) as StoredAlbum,
-    ),
-    albumPhoto: data?.albumPhoto ?? [],
+    data: {
+      albums: (data?.albums ?? []).map(
+        album => hydrateAlbumDates(album) as StoredAlbum,
+      ),
+      albumPhoto: data?.albumPhoto ?? [],
+    },
+    etag,
   };
 };
 
-export const saveStoredAlbumData = async (data: StoredAlbumData) =>
-  writeJson(KEY_ALBUMS, data);
+export const getStoredAlbumData = async (): Promise<StoredAlbumData> =>
+  (await getStoredAlbumDataWithEtag()).data;
+
+export const saveStoredAlbumData = async (
+  data: StoredAlbumData,
+  expectedEtag?: string | null,
+) => writeJson(KEY_ALBUMS, data, expectedEtag);
 
 // ---------------------------------------------------------------------------
 // Library ("about" page content)
@@ -252,8 +395,14 @@ export const saveStoredAlbumData = async (data: StoredAlbumData) =>
 
 export type StoredLibrary = Record<string, unknown>;
 
-export const getStoredLibrary = async (): Promise<StoredLibrary | undefined> =>
-  readJson<StoredLibrary>(KEY_LIBRARY);
+export const getStoredLibraryWithEtag = async (): Promise<{
+  data: StoredLibrary | undefined, etag: string | null,
+}> => readJsonWithEtag<StoredLibrary>(KEY_LIBRARY);
 
-export const saveStoredLibrary = async (library: StoredLibrary) =>
-  writeJson(KEY_LIBRARY, library);
+export const getStoredLibrary = async (): Promise<StoredLibrary | undefined> =>
+  (await getStoredLibraryWithEtag()).data;
+
+export const saveStoredLibrary = async (
+  library: StoredLibrary,
+  expectedEtag?: string | null,
+) => writeJson(KEY_LIBRARY, library, expectedEtag);
