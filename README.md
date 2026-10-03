@@ -109,6 +109,17 @@ pnpm upload:cf    # 构建并上传(不立即发布)
 
 代码层面已同步适配 EdgeOne Pages 等其他边缘运行时(服务端页面守卫 + S3 兼容存储均不依赖 Cloudflare 专有 API)。
 
+## 数据备份与恢复
+
+零数据库架构下,照片 / 相册 / 图库全部元数据的唯一在线副本是存储桶里的 3 个 JSON 文档,因此本项目内置两层保护:
+
+**自动滚动备份**——每次元数据写入前,被覆盖的前置状态会自动快照到 `_data/backups/{photos|albums|library}/{0-23}.json`(24 个按小时轮转的槽位,可回滚到之前 24 小时内任意整点状态)。备份位于 `_data/` 前缀下,被公开域名 WAF 规则一并拦截;备份失败不阻塞写入,但会在服务端日志中报错。手动回滚:在 R2 / S3 工具中将备份槽位对象复制回对应文档 key(如 `_data/backups/photos/12.json` → `_data/photos.json`)。
+
+**手动导出 / 恢复**——登录后进入 `/admin/configuration` 的 **Data Backup** 区:
+
+- **Export backup**:一键下载单 JSON 文件(含 photos / albums / library 全部原始文档),建议定期保存到桶外;
+- **Restore from backup**:上传导出文件整包恢复。恢复前会校验整包结构(校验失败不写入任何文档),且当前状态同样先进入滚动备份,误恢复可再次回滚。
+
 ## 常用脚本
 
 | 命令 | 说明 |

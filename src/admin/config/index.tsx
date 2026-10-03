@@ -1,5 +1,6 @@
 import IconSort from '@/components/icons/IconSort';
 import {
+  BiArchive,
   BiData,
   BiGlobe,
   BiHide,
@@ -30,6 +31,10 @@ const ADMIN_CONFIG_SECTIONS = [{
   title: 'Authentication',
   required: true,
   icon: <BiLockAlt size={16} />,
+}, {
+  title: 'Data Backup',
+  required: true,
+  icon: <BiArchive size={16} />,
 }, {
   title: 'Content',
   required: true,

@@ -221,11 +221,124 @@ const writeJson = async <T>(
   value: T,
   expectedEtag?: string | null,
 ) => {
+  const text = JSON.stringify(value);
+  // Overwrites (conditional and unconditional alike) first snapshot the
+  // predecessor into a rolling backup slot; create-only writes have no
+  // predecessor to protect.
+  if (expectedEtag !== null) {
+    await backupOverwrittenDocument(key, text);
+  }
   await getDriver().putText(
     key,
-    JSON.stringify(value),
+    text,
     expectedEtag === null ? null : expectedEtag || undefined,
   );
+};
+
+// ---------------------------------------------------------------------------
+// Rolling backups
+// ---------------------------------------------------------------------------
+
+// Every document overwrite first snapshots its predecessor into one of
+// `BACKUP_SLOTS` rotating time buckets under `_data/backups/`, so a bad
+// write can be rolled back to any earlier hour without requiring list
+// support from the driver. Bucket keys are overwritten unconditionally
+// (the newest snapshot in a bucket wins), and backup failures never block
+// the write itself — a degraded safety net beats a broken upload. Backups
+// live under `_data/` so the public-domain WAF rule from the deployment
+// checklist covers them too.
+const BACKUP_SLOTS = 24;
+const BACKUP_SLOT_WINDOW_MS = 60 * 60 * 1000;
+
+const backupKeyForDocument = (key: string, slot: number) =>
+  key
+    .replace(/^_data\//, '_data/backups/')
+    .replace(/\.json$/, `/${slot}.json`);
+
+const backupOverwrittenDocument = async (
+  key: string,
+  value: string,
+) => {
+  try {
+    const current = await getDriver().getText(key);
+    // Nothing to protect on first-ever writes; skip no-op writes
+    if (current === null || current.text === value) { return; }
+    const slot = Math.floor(Date.now() / BACKUP_SLOT_WINDOW_MS) %
+      BACKUP_SLOTS;
+    await getDriver().putText(backupKeyForDocument(key, slot), current.text);
+  } catch (e) {
+    console.error(
+      `Rolling backup failed for store document "${key}"` +
+      ' — proceeding with write:',
+      e,
+    );
+  }
+};
+
+// ---------------------------------------------------------------------------
+// Raw backup export / restore (admin tooling)
+// ---------------------------------------------------------------------------
+
+export const METADATA_BACKUP_FORMAT = 'exif-photo-blog-metadata';
+export const METADATA_BACKUP_VERSION = 1;
+
+const METADATA_DOCUMENT_KEYS = [KEY_PHOTOS, KEY_ALBUMS, KEY_LIBRARY];
+
+// Byte-faithful read of all metadata documents (missing documents are
+// omitted) for offsite backups and migrations.
+export const getRawStoredDocuments = async () => {
+  const documents: Record<string, unknown> = {};
+  for (const key of METADATA_DOCUMENT_KEYS) {
+    const { data } = await readJsonWithEtag(key);
+    if (data !== undefined) { documents[key] = data; }
+  }
+  return documents;
+};
+
+const validateStoredDocumentShape = (key: string, data: unknown) => {
+  if (key === KEY_PHOTOS) {
+    const photos = (data as { photos?: unknown }).photos;
+    const isInvalid = !Array.isArray(photos) || photos.some(photo =>
+      typeof photo !== 'object' ||
+      photo === null ||
+      typeof (photo as { id?: unknown }).id !== 'string' ||
+      (photo as { id: string }).id === '',
+    );
+    if (isInvalid) {
+      throw new Error(
+        `Backup document "${key}" has an invalid photos shape`);
+    }
+  } else if (key === KEY_ALBUMS) {
+    const albums = data as { albums?: unknown, albumPhoto?: unknown };
+    if (!Array.isArray(albums.albums) || !Array.isArray(albums.albumPhoto)) {
+      throw new Error(
+        `Backup document "${key}" has an invalid albums shape`);
+    }
+  } else if (key === KEY_LIBRARY) {
+    if (typeof data !== 'object' || data === null) {
+      throw new Error(`Backup document "${key}" has an invalid shape`);
+    }
+  }
+};
+
+// Restores raw documents from a backup bundle (missing documents are
+// skipped). The whole bundle is validated before anything is written, and
+// every overwritten document is first captured by the rolling backup, so
+// a bad restore is itself recoverable.
+export const restoreRawStoredDocuments = async (
+  documents: Record<string, unknown>,
+) => {
+  const restoredKeys: string[] = [];
+  for (const key of METADATA_DOCUMENT_KEYS) {
+    if (documents[key] === undefined) { continue; }
+    validateStoredDocumentShape(key, documents[key]);
+  }
+  for (const key of METADATA_DOCUMENT_KEYS) {
+    if (documents[key] === undefined) { continue; }
+    await writeJson(key, documents[key]);
+    restoredKeys.push(key);
+  }
+  return restoredKeys;
 };
 
 const MUTATE_STORE_MAX_ATTEMPTS = 5;

@@ -13,7 +13,16 @@ import ChecklistGroup from '@/components/ChecklistGroup';
 import { AppConfiguration } from '@/app/config';
 import StatusIcon from '@/components/StatusIcon';
 import { labelForStorage } from '@/platforms/storage';
-import { testConnectionsAction } from '@/admin/actions';
+import {
+  exportMetadataAction,
+  importMetadataAction,
+  testConnectionsAction,
+} from '@/admin/actions';
+import SubmitButtonWithStatus from '@/components/SubmitButtonWithStatus';
+import FormWithConfirm from '@/components/FormWithConfirm';
+import LoaderButton from '@/components/primitives/LoaderButton';
+import { toastSuccess, toastWarning } from '@/toast';
+import { BiDownload, BiUpload } from 'react-icons/bi';
 import ErrorNote from '@/components/ErrorNote';
 import SecretGenerator from '@/app/SecretGenerator';
 import EnvVar from '@/components/EnvVar';
@@ -295,6 +304,30 @@ export default function AdminAppConfigurationClient({
       {'"'}
     </>;
 
+  const [isExportingMetadata, setIsExportingMetadata] = useState(false);
+
+  const exportMetadata = async () => {
+    setIsExportingMetadata(true);
+    try {
+      const json = await exportMetadataAction();
+      const url = URL.createObjectURL(
+        new Blob([json], { type: 'application/json' }));
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `photo-blog-metadata-${
+        new Date().toISOString().replace(/:/g, '-').slice(0, 19)
+      }.json`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+      toastSuccess('Metadata backup downloaded');
+    } catch (e) {
+      console.error(e);
+      toastWarning('Metadata export failed');
+    } finally {
+      setIsExportingMetadata(false);
+    }
+  };
+
   const renderGroupContent = (key: ConfigSectionKey): JSX.Element => {
     switch (key) {
       case 'Storage':
@@ -389,6 +422,65 @@ export default function AdminAppConfigurationClient({
               'ADMIN_EMAIL',
               'ADMIN_PASSWORD',
             ])}
+          </ChecklistRow>
+        </>;
+      case 'Data Backup':
+        return <>
+          <ChecklistRow
+            title="Rolling backups"
+            status={hasDatabase}
+          >
+            Every metadata write is auto-snapshotted to hourly
+            {' '}rolling backup slots (24 hours) in
+            {' '}{'"_data/backups/"'} — covered by the same
+            {' '}{'"/_data/*"'} public-domain WAF rule from the
+            {' '}README deployment checklist.
+          </ChecklistRow>
+          <ChecklistRow
+            title="Export metadata"
+            status={hasDatabase}
+          >
+            Download all photo / album / library metadata as a
+            single JSON file for offsite safekeeping.
+            <div className="pt-1">
+              <LoaderButton
+                isLoading={isExportingMetadata}
+                onClick={exportMetadata}
+                icon={<BiDownload size={16} />}
+              >
+                Export backup
+              </LoaderButton>
+            </div>
+          </ChecklistRow>
+          <ChecklistRow
+            title="Restore metadata from backup"
+            status={hasDatabase}
+          >
+            Restore from an exported backup file. Current
+            metadata is backed up automatically first, and the
+            whole file is validated before anything is written.
+            <FormWithConfirm
+              className="flex flex-wrap items-center gap-2 pt-1"
+              action={importMetadataAction}
+              confirmText={
+                'Restore metadata from this file? ' +
+                'The current metadata is backed up first.'
+              }
+            >
+              <input
+                type="file"
+                name="bundle"
+                required
+                accept=".json,application/json"
+                className="text-sm"
+              />
+              <SubmitButtonWithStatus
+                icon={<BiUpload size={16} />}
+                onFormSubmitToastMessage="Metadata restored from backup"
+              >
+                Restore
+              </SubmitButtonWithStatus>
+            </FormWithConfirm>
           </ChecklistRow>
         </>;
       case 'Content':

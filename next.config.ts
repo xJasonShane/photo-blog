@@ -14,6 +14,12 @@ const nextConfig: NextConfig = {
   images: {
     unoptimized: true,
   },
+  experimental: {
+    serverActions: {
+      // Metadata backup bundles are restored in a single request
+      bodySizeLimit: '50mb',
+    },
+  },
   serverExternalPackages: ['exifr'],
   turbopack: {
     resolveAlias: {

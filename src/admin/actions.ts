@@ -6,6 +6,13 @@ import { testOpenAiConnection } from '@/platforms/openai';
 import { testDatabaseConnection } from '@/platforms/postgres';
 import { testStorageConnection } from '@/platforms/storage';
 import { testGooglePlacesConnection } from '@/platforms/google-places';
+import {
+  getRawStoredDocuments,
+  METADATA_BACKUP_FORMAT,
+  METADATA_BACKUP_VERSION,
+  restoreRawStoredDocuments,
+} from '@/platforms/store';
+import { revalidateAllKeysAndPaths } from '@/cache';
 import { APP_CONFIGURATION } from '@/app/config';
 import { getStorageUploadUrlsNoStore } from '@/platforms/storage/cache';
 import {
@@ -125,4 +132,44 @@ export const testConnectionsAction = async () =>
       aiError,
       locationError,
     };
+  });
+
+export const exportMetadataAction = async () =>
+  runAuthenticatedAdminServerAction(async () => {
+    const documents = await getRawStoredDocuments();
+    return JSON.stringify({
+      format: METADATA_BACKUP_FORMAT,
+      version: METADATA_BACKUP_VERSION,
+      exportedAt: new Date().toISOString(),
+      documents,
+    }, null, 2);
+  });
+
+export const importMetadataAction = async (formData: FormData) =>
+  runAuthenticatedAdminServerAction(async () => {
+    const file = formData.get('bundle');
+    if (!(file instanceof File) || file.size === 0) {
+      throw new Error('Select a metadata backup file to restore');
+    }
+    let bundle: {
+      format?: string
+      documents?: Record<string, unknown>
+    };
+    try {
+      bundle = JSON.parse(await file.text());
+    } catch {
+      throw new Error('Backup file is not valid JSON');
+    }
+    if (bundle?.format !== METADATA_BACKUP_FORMAT) {
+      throw new Error('Unrecognized backup file format');
+    }
+    if (!bundle.documents) {
+      throw new Error('Backup file contains no metadata documents');
+    }
+    const restoredKeys = await restoreRawStoredDocuments(bundle.documents);
+    if (restoredKeys.length === 0) {
+      throw new Error('Backup file contains no metadata documents');
+    }
+    revalidateAllKeysAndPaths();
+    return { restoredKeys };
   });
