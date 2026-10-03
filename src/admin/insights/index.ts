@@ -68,15 +68,30 @@ export interface PhotoStats {
   dateRange?: PhotoDateRangePostgres
 }
 
-export const getGitHubMetaForCurrentApp = () =>
-  (IS_VERCEL_GIT_PROVIDER_GITHUB || IS_DEVELOPMENT)
-    ? getGitHubMeta({
+const GITHUB_META_TIMEOUT_MS = 4000;
+
+// Informational-only data: a slow or unreachable GitHub API must never
+// break the admin pages rendering it, so the fetch is capped by a
+// timeout and degrades to `undefined` on failure.
+export const getGitHubMetaForCurrentApp = async () => {
+  if (!(IS_VERCEL_GIT_PROVIDER_GITHUB || IS_DEVELOPMENT)) {
+    return undefined;
+  }
+  return await Promise.race([
+    getGitHubMeta({
       owner: VERCEL_GIT_REPO_OWNER,
       repo: VERCEL_GIT_REPO_SLUG,
       branch: VERCEL_GIT_BRANCH,
       commit: VERCEL_GIT_COMMIT_SHA,
-    })
-    : undefined;
+    }),
+    new Promise<undefined>(resolve => setTimeout(
+      () => resolve(undefined), GITHUB_META_TIMEOUT_MS,
+    )),
+  ]).catch(e => {
+    console.error('GitHub meta fetch failed:', e);
+    return undefined;
+  });
+};
 
 export const getSignificantInsights = ({
   codeMeta,

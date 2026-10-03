@@ -36,7 +36,14 @@ export const isSafeInternalRedirectPath = (path: string) =>
   !path.startsWith('//') &&
   !path.startsWith('/\\');
 
-export const generateAuthSecret = () => fetch(
-  'https://generate-secret.vercel.app/32',
-  { cache: 'no-cache' },
-).then(res => res.text());
+// Generated locally from `crypto` instead of fetching a third-party
+// service (generate-secret.vercel.app): an unreachable external service
+// must never break admin pages, and a local CSPRNG is not a supply-chain
+// dependency. 48 base64url chars ≈ 288 bits of entropy.
+export const generateAuthSecret = () => {
+  const bytes = crypto.getRandomValues(new Uint8Array(36));
+  const base64 = btoa(String.fromCharCode(...bytes));
+  return Promise.resolve(
+    base64.replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', ''),
+  );
+};
